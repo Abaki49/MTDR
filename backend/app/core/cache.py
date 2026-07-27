@@ -22,6 +22,10 @@ def user_identity_key(user_id: int) -> str:
     return f"user:{user_id}:identity"
 
 
+def permissions_cache_key(organization_id: int, role_id: int) -> str:
+    return f"perms:org:{organization_id}:role:{role_id}"
+
+
 async def get_cache(key: str) -> Optional[str]:
     if redis_client is None:
         return None

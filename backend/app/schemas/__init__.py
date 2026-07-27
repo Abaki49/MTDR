@@ -20,3 +20,7 @@ from app.schemas.resources import (
     ResourceResponse,
     ResourceUpdate,
 )
+from app.schemas.permissions import (
+    PermissionOverride,
+    PermissionOverrideResponse,
+)

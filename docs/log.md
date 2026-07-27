@@ -572,6 +572,53 @@ All 404 responses verified to be `404 Not Found` (never 403).
 
 ---
 
+---
+
+## BE-109 — Permission Resolution & Sync Cache Invalidation
+
+**Status:** Completed
+
+### What was implemented
+- **`app/core/cache.py`** — Added `permissions_cache_key(org_id, role_id)` → `perms:org:{org_id}:role:{role_id}`.
+- **`app/core/authorization.py`** — Refactored permission resolution:
+  - `_compute_permissions_from_db` — sync helper that queries DB for role defaults + org overrides.
+  - `resolve_permissions` — async, checks Redis cache first. Cache hit → return. Cache miss → call `_compute_permissions_from_db`, populate Redis with 30s TTL, return.
+  - `authorize` — now async (calls `await resolve_permissions`).
+  - `require_permission` — inner dependency is now async.
+- **`app/schemas/permissions.py`** — New schemas: `PermissionOverride` (permission_id, allowed), `PermissionOverrideResponse` (permission_id, permission_name, allowed, source).
+- **`app/api/v1/permissions.py`** — Two endpoints (both guarded by `require_permission("permission.manage")`):
+  - `GET /v1/organizations/{org_id}/roles/{role_id}/permissions` — returns all permissions for a role in an org, annotated with `source: "default" | "override"` and the `allowed` value.
+  - `PUT /v1/organizations/{org_id}/roles/{role_id}/permissions` — replaces all overrides. Deletes existing `OrganizationRolePermission` rows for the org/role, inserts the new ones, commits, then invalidates Redis cache **after** commit.
+
+### Key decisions
+- **Strict post-commit invalidation:** The PUT endpoint calls `db.commit()` first. If it succeeds, `delete_cache` runs. If commit fails, the exception propagates and cache deletion is never reached. If cache deletion itself fails, the exception is logged but the HTTP request succeeds (30s TTL safety net).
+- **Async authorization flow:** `resolve_permissions` is async to support `await` on Redis calls. `authorize` and the `require_permission` dependency are async too. FastAPI handles async dependencies seamlessly, even when the inner DB queries are sync.
+- **`_compute_permissions_from_db`** exposed as a public module-level function so the `permissions.py` GET endpoint can reuse it for the "defaults" computation without triggering cache read/write.
+- **30s TTL** on permission cache keys — short enough to act as a safety net if invalidation fails, long enough to provide meaningful reduction in DB queries.
+
+### Verification results
+| Step | Action | Result |
+|------|--------|--------|
+| 1 | Clear Redis, Editor creates resource (cache miss) | 201 — cache populated |
+| 2 | Editor creates resource again (cache hit) | 201 — cache served |
+| 3 | GET Editor role permissions (super admin) | resource.read=Y, resource.create=Y, resource.update=Y (all default) |
+| 4 | PUT revoke `resource.create` for Editor in Org 1 | 200 — overrides replaced, cache deleted |
+| 5 | Editor tries to create resource after revoke | 404 — permission denied, cache repopulated without resource.create |
+| 6 | Verify cache content | `["resource.read", "resource.update"]` — correct |
+| 7 | Verify cache TTL | ~17s (30s TTL, ~13s elapsed) — correct |
+| 8 | Editor reads resources (resource.read still granted) | 200 — partial revoke works correctly |
+
+### Files created
+- `backend/app/schemas/permissions.py`
+
+### Files modified
+- `backend/app/core/cache.py` — added `permissions_cache_key`
+- `backend/app/core/authorization.py` — `_resolve_permissions` → `resolve_permissions` (async with Redis cache) + `_compute_permissions_from_db` (sync helper); `authorize` and `require_permission` now async
+- `backend/app/api/v1/permissions.py` — implemented GET and PUT endpoints
+- `backend/app/schemas/__init__.py` — exports PermissionOverride, PermissionOverrideResponse
+
+---
+
 ## Next Task
 
 _To be filled after the next implementation._

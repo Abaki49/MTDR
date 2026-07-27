@@ -1,13 +1,22 @@
+import json
+
 from fastapi import Depends, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
+from app.core.cache import (
+    get_cache,
+    permissions_cache_key,
+    set_cache,
+)
 from app.database.models.membership import Membership
 from app.database.models.organization_role_permission import OrganizationRolePermission
 from app.database.models.permission import Permission
 from app.database.models.role_permission import RolePermission
 from app.database.models.user import User
 from app.database.session import get_db
+
+PERMISSIONS_CACHE_TTL = 30
 
 
 def require_super_admin(
@@ -21,13 +30,13 @@ def require_super_admin(
     return current_user
 
 
-def _resolve_permissions(db: Session, role_id: int, organization_id: int) -> set[str]:
+def _compute_permissions_from_db(db: Session, role_id: int, organization_id: int) -> set[str]:
     role_perm_ids = [
         rp.permission_id
         for rp in db.query(RolePermission).filter(RolePermission.role_id == role_id).all()
     ]
 
-    permission_names = set()
+    permission_names: set[str] = set()
     if role_perm_ids:
         rows = db.query(Permission).filter(Permission.id.in_(role_perm_ids)).all()
         permission_names = {p.name for p in rows}
@@ -52,7 +61,20 @@ def _resolve_permissions(db: Session, role_id: int, organization_id: int) -> set
     return permission_names
 
 
-def authorize(
+async def resolve_permissions(db: Session, role_id: int, organization_id: int) -> set[str]:
+    cache_key = permissions_cache_key(organization_id, role_id)
+
+    cached = await get_cache(cache_key)
+    if cached is not None:
+        return set(json.loads(cached))
+
+    effective = _compute_permissions_from_db(db, role_id, organization_id)
+
+    await set_cache(cache_key, json.dumps(list(effective)), ttl=PERMISSIONS_CACHE_TTL)
+    return effective
+
+
+async def authorize(
     db: Session,
     user: User,
     organization_id: int,
@@ -73,18 +95,18 @@ def authorize(
     if not membership:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
-    effective_permissions = _resolve_permissions(db, membership.role_id, organization_id)
+    effective_permissions = await resolve_permissions(db, membership.role_id, organization_id)
     if permission not in effective_permissions:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
 
 def require_permission(permission: str):
-    def dependency(
+    async def dependency(
         organization_id: int = Path(alias="organization_id"),
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
-        authorize(db, current_user, organization_id, permission)
+        await authorize(db, current_user, organization_id, permission)
         return current_user
 
     return dependency
