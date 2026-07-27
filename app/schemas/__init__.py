@@ -15,3 +15,8 @@ from app.schemas.organizations import (
     OrganizationUpdate,
     PaginatedResponse,
 )
+from app.schemas.resources import (
+    ResourceCreate,
+    ResourceResponse,
+    ResourceUpdate,
+)

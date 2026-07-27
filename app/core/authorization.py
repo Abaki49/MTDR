@@ -40,6 +40,9 @@ def verify_org_access(
     return current_user
 
 
+verify_org_member = verify_org_access
+
+
 def verify_org_admin(
     organization_id: int = Path(alias="organization_id"),
     current_user: User = Depends(get_current_user),
