@@ -5,6 +5,7 @@ export interface Role {
   name: string
   is_system: boolean
   rank: number
+  caller_can_assign: boolean
 }
 
 export async function getRoles(orgId: number): Promise<Role[]> {

@@ -34,6 +34,16 @@ function OrgSidebar() {
         </Link>
       )}
 
+      {can('permission.manage') && (
+        <Link
+          to={`${base}/permissions`}
+          className={`sidebar-link${isActive(`${base}/permissions`) ? ' active' : ''}`}
+        >
+          <span className="icon">&#9632;</span>
+          Permissions
+        </Link>
+      )}
+
       <div style={{ marginTop: 12 }}>
         <button className="logout-btn" onClick={() => navigate('/organizations')}>
           &larr; Back to Organizations

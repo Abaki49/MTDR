@@ -8,6 +8,8 @@ export interface Member {
   status: string
   created_at: string
   updated_at: string
+  user_name: string
+  user_email: string
 }
 
 export interface MemberCreate {

@@ -7,6 +7,7 @@ import {
   getMembers,
   createMember,
   updateMember,
+  deleteMember,
   type Member,
   type MemberCreate,
   type MemberUpdate,
@@ -52,9 +53,21 @@ export function MembersPage() {
     },
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deleteMember(orgIdNum, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['members', orgIdNum] })
+    },
+  })
+
   if (!orgId) return <div>Invalid organization</div>
 
+  const assignableRoles = roles.filter((r) => r.caller_can_assign)
   const roleOptions = roles.map((r) => ({
+    value: r.id,
+    label: `${r.name} (rank ${r.rank})`,
+  }))
+  const assignableRoleOptions = assignableRoles.map((r) => ({
     value: r.id,
     label: `${r.name} (rank ${r.rank})`,
   }))
@@ -101,7 +114,8 @@ export function MembersPage() {
             <thead>
               <tr>
                 <th>ID</th>
-                <th>User ID</th>
+                <th>Name</th>
+                <th>Email</th>
                 <th>Role</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -110,7 +124,7 @@ export function MembersPage() {
             <tbody>
               {members.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: 32, color: 'var(--gray-400)' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: 32, color: 'var(--gray-400)' }}>
                     No members found
                   </td>
                 </tr>
@@ -118,17 +132,31 @@ export function MembersPage() {
                 members.map((m) => (
                   <tr key={m.id}>
                     <td style={{ fontWeight: 500 }}>{m.id}</td>
-                    <td>{m.user_id}</td>
+                    <td>{m.user_name || `User #${m.user_id}`}</td>
+                    <td>{m.user_email || '—'}</td>
                     <td>{roles.find((r) => r.id === m.role_id)?.name ?? m.role_id}</td>
                     <td>
                       <span className={`badge badge-${badgeVariant(m.status)}`}>{m.status}</span>
                     </td>
                     <td>
-                      {can('membership.update') && (
-                        <button className="btn btn-ghost btn-sm" onClick={() => setEditMember(m)}>
-                          Edit
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {can('membership.update') && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => setEditMember(m)}>
+                            Edit
+                          </button>
+                        )}
+                        {can('membership.delete') && (
+                          <button
+                            className="btn btn-danger btn-sm"
+                            onClick={() => {
+                              if (confirm(`Remove ${m.user_name || `user #${m.user_id}`} from this organization?`))
+                                deleteMutation.mutate(m.id)
+                            }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -141,7 +169,8 @@ export function MembersPage() {
       <AddMemberModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        roleOptions={roleOptions}
+        roleOptions={assignableRoleOptions.length > 0 ? assignableRoleOptions : roleOptions}
+        canAssign={assignableRoles.length > 0}
         onSubmit={(data) => createMutation.mutate(data)}
         isSubmitting={createMutation.isPending}
         error={createMutation.error?.message}
@@ -152,6 +181,7 @@ export function MembersPage() {
           member={editMember}
           onClose={() => setEditMember(null)}
           roleOptions={roleOptions}
+          assignableRoleOptions={assignableRoleOptions}
           statusOptions={statusOptions}
           onSubmit={(data) => updateMutation.mutate({ id: editMember.id, data })}
           isSubmitting={updateMutation.isPending}
@@ -166,6 +196,7 @@ function AddMemberModal({
   open,
   onClose,
   roleOptions,
+  canAssign,
   onSubmit,
   isSubmitting,
   error,
@@ -173,6 +204,7 @@ function AddMemberModal({
   open: boolean
   onClose: () => void
   roleOptions: { value: number; label: string }[]
+  canAssign: boolean
   onSubmit: (data: MemberCreate) => void
   isSubmitting: boolean
   error?: string
@@ -200,6 +232,9 @@ function AddMemberModal({
               required
               min={1}
             />
+            <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 4 }}>
+              Enter the numeric user ID. Only roles with rank above yours are available.
+            </p>
           </div>
           <SelectField
             label="Role"
@@ -209,6 +244,11 @@ function AddMemberModal({
             options={roleOptions}
             required
           />
+          {!canAssign && (
+            <p style={{ fontSize: 12, color: 'var(--warning)', marginTop: 4 }}>
+              You cannot assign any role from your current rank.
+            </p>
+          )}
           {error && <p className="form-error">{error}</p>}
         </div>
         <div className="modal-footer">
@@ -228,6 +268,7 @@ function EditMemberModal({
   member,
   onClose,
   roleOptions,
+  assignableRoleOptions,
   statusOptions,
   onSubmit,
   isSubmitting,
@@ -236,6 +277,7 @@ function EditMemberModal({
   member: Member
   onClose: () => void
   roleOptions: { value: number; label: string }[]
+  assignableRoleOptions: { value: number; label: string }[]
   statusOptions: { value: string; label: string }[]
   onSubmit: (data: MemberUpdate) => void
   isSubmitting: boolean
@@ -254,15 +296,15 @@ function EditMemberModal({
       <form onSubmit={handleSubmit}>
         <div className="modal-body">
           <div className="form-group">
-            <label className="form-label">User ID</label>
-            <input className="form-input" type="text" value={member.user_id} disabled />
+            <label className="form-label">Member</label>
+            <input className="form-input" type="text" value={`${member.user_name || ''} (ID: ${member.user_id})`} disabled />
           </div>
           <SelectField
             label="Role"
             name="role_id"
             value={roleId}
             onChange={setRoleId}
-            options={roleOptions}
+            options={assignableRoleOptions.length > 0 && !roleOptions.find((r) => r.value === parseInt(roleId, 10) && !r.value) ? assignableRoleOptions : roleOptions}
           />
           <SelectField
             label="Status"

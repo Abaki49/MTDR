@@ -6,6 +6,7 @@ class RoleResponse(BaseModel):
     name: str
     is_system: bool
     rank: int
+    caller_can_assign: bool = False
 
     class Config:
         from_attributes = True
