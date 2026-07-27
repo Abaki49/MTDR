@@ -5,6 +5,7 @@ from app.database.models.permission import Permission
 from app.database.models.role_permission import RolePermission
 from app.database.models.membership import Membership
 from app.database.models.resource import Resource
+from app.database.models.organization_role_permission import OrganizationRolePermission
 
 __all__ = [
     "User",
@@ -14,4 +15,5 @@ __all__ = [
     "RolePermission",
     "Membership",
     "Resource",
+    "OrganizationRolePermission",
 ]

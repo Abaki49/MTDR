@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.authorization import verify_org_member
+from app.core.authorization import require_permission
 from app.database.models.user import User
 from app.database.session import get_db
 from app.schemas.resources import ResourceCreate, ResourceResponse, ResourceUpdate
@@ -23,7 +23,7 @@ router = APIRouter(tags=["resources"])
 def get_resources(
     organization_id: int,
     db: Session = Depends(get_db),
-    _=Depends(verify_org_member),
+    _: User = Depends(require_permission("resource.read")),
 ):
     return [
         ResourceResponse.model_validate(r)
@@ -40,7 +40,7 @@ def post_resource(
     organization_id: int,
     body: ResourceCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(verify_org_member),
+    current_user: User = Depends(require_permission("resource.create")),
 ):
     resource = create_resource(db, organization_id, body, current_user.id)
     return ResourceResponse.model_validate(resource)
@@ -54,7 +54,7 @@ def get_resource_by_id(
     organization_id: int,
     resource_id: int,
     db: Session = Depends(get_db),
-    _=Depends(verify_org_member),
+    _: User = Depends(require_permission("resource.read")),
 ):
     resource = get_org_resource(db, organization_id, resource_id)
     if resource is None:
@@ -71,7 +71,7 @@ def put_resource(
     resource_id: int,
     body: ResourceUpdate,
     db: Session = Depends(get_db),
-    _=Depends(verify_org_member),
+    _: User = Depends(require_permission("resource.update")),
 ):
     resource = get_org_resource(db, organization_id, resource_id)
     if resource is None:
@@ -88,7 +88,7 @@ def delete_resource_by_id(
     organization_id: int,
     resource_id: int,
     db: Session = Depends(get_db),
-    _=Depends(verify_org_member),
+    _: User = Depends(require_permission("resource.delete")),
 ):
     resource = get_org_resource(db, organization_id, resource_id)
     if resource is None:

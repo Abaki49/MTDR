@@ -2,8 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from starlette import status as http_status
 
-from app.core.authorization import verify_org_access, verify_org_admin
-from app.core.auth import get_current_user
+from app.core.authorization import require_permission
 from app.database.models.user import User
 from app.database.session import get_db
 from app.schemas.memberships import (
@@ -29,7 +28,7 @@ router = APIRouter(tags=["memberships"])
 def get_members(
     organization_id: int,
     db: Session = Depends(get_db),
-    _=Depends(verify_org_access),
+    _: User = Depends(require_permission("membership.read")),
 ):
     return [
         MembershipResponse.model_validate(m)
@@ -46,9 +45,8 @@ def post_member(
     organization_id: int,
     body: MembershipCreate,
     db: Session = Depends(get_db),
-    caller_and_rank: tuple[User, int] = Depends(verify_org_admin),
+    caller: User = Depends(require_permission("membership.create")),
 ):
-    caller = caller_and_rank[0]
     try:
         member = upsert_member(db, organization_id, body, caller)
     except ValueError as e:
@@ -66,7 +64,7 @@ def get_member_by_id(
     organization_id: int,
     member_id: int,
     db: Session = Depends(get_db),
-    _=Depends(verify_org_access),
+    _: User = Depends(require_permission("membership.read")),
 ):
     member = get_member(db, organization_id, member_id)
     if member is None:
@@ -83,9 +81,8 @@ def put_member(
     member_id: int,
     body: MembershipUpdate,
     db: Session = Depends(get_db),
-    caller_and_rank: tuple[User, int] = Depends(verify_org_admin),
+    caller: User = Depends(require_permission("membership.update")),
 ):
-    caller = caller_and_rank[0]
     member = get_member(db, organization_id, member_id)
     if member is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
@@ -106,7 +103,7 @@ def delete_member_by_id(
     organization_id: int,
     member_id: int,
     db: Session = Depends(get_db),
-    caller_and_rank: tuple[User, int] = Depends(verify_org_admin),
+    _: User = Depends(require_permission("membership.delete")),
 ):
     member = get_member(db, organization_id, member_id)
     if member is None:

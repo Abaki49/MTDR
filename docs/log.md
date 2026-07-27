@@ -516,6 +516,62 @@ This file serves as persistent memory for the MTDR project. Update it after each
 
 ---
 
+---
+
+## BE-108 — Authorization Service (Tenant Isolation)
+
+**Status:** Completed
+
+### What was implemented
+- **`backend/app/database/models/organization_role_permission.py`** — New model for org-level permission overrides (`organization_id`, `role_id`, `permission_id`, `allowed`).
+- **Alembic migration `6b94595b9d9b`** — Creates `organization_role_permissions` table with FK indexes and unique constraint.
+- **`backend/app/core/authorization.py`** — Complete rewrite with:
+  - `_resolve_permissions(db, role_id, organization_id)` — merges role defaults (`role_permissions`) with org overrides (`organization_role_permissions`), applying the `allowed` boolean patch.
+  - `authorize(db, user, organization_id, permission)` — implements the Section 9.2 algorithm exactly:
+    1. Super admin bypass → Allow.
+    2. Query `memberships` for `ACTIVE` membership. If none → `404 Not Found`.
+    3. Resolve effective permissions via `_resolve_permissions`.
+    4. If permission not in resolved set → `404 Not Found`.
+    5. Otherwise → Allow.
+  - `require_permission(permission: str)` — FastAPI dependency factory. Extracts `organization_id` from the route path, calls `authorize()`, returns the `User`. All failures raise `404` per global 404 policy.
+  - `require_super_admin` — preserved with 403 for global admin endpoints.
+- **`backend/app/api/v1/memberships.py`** — Replaced `Depends(verify_org_access)` and `Depends(verify_org_admin)` with `Depends(require_permission("membership.*"))` for each endpoint.
+- **`backend/app/api/v1/resources.py`** — Replaced `Depends(verify_org_member)` with `Depends(require_permission("resource.*"))` for each endpoint.
+- **Seed data** — Permissions seeded (ids 1-8): `membership.read/create/update/delete`, `resource.read/create/update/delete`. Org Admin (role 1) gets all 8. Editor (role 2) gets `resource.read/create/update`.
+
+### Key decisions
+- **404 everywhere** — `authorize()` raises `HTTPException(404)` for both missing membership AND missing permission. Never 403 for tenant-scoped endpoints.
+- **`require_permission` returns a callable** (not a `Depends` object) so endpoints use `Depends(require_permission("name"))` — consistent with FastAPI patterns.
+- **Rank checks remain in service layer** — `require_permission` replaces authorization guards only. The rank-comparison logic in `upsert_member`/`update_member` (caller_rank < target_role.rank) stays untouched in the membership service.
+- **`OrganizationRolePermission` model follows architecture Section 10** — the `allowed` column acts as a boolean patch on top of default role permissions.
+- **No Redis caching** for permissions in this task (deferred to BE-109). Each `authorize()` call queries DB for permissions.
+
+### Verification results
+| Test | Action | Expected | Actual |
+|------|--------|----------|--------|
+| 1 | Org Admin GET /orgs/1/resources | 200 | 200 |
+| 2 | Org Admin GET /orgs/2/resources (no membership) | 404 | 404 |
+| 3 | Editor POST /orgs/1/members (no membership.create) | 404 | 404 |
+| 4 | Super Admin GET /orgs/2/resources (bypass) | 200 | 200 |
+| 5 | Editor GET /orgs/1/resources (has resource.read) | 200 | 200 |
+| 6 | Org Admin POST /orgs/1/members (has membership.create) | 201 | 201 |
+| 7 | Editor POST /orgs/1/resources (has resource.create) | 201 | 201 |
+| 8 | Editor DELETE /orgs/1/resources/1 (no resource.delete) | 404 | 404 |
+
+All 404 responses verified to be `404 Not Found` (never 403).
+
+### Files created
+- `backend/app/database/models/organization_role_permission.py`
+- `backend/app/database/migrations/versions/6b94595b9d9b_create_organization_role_permissions.py`
+
+### Files modified
+- `backend/app/database/models/__init__.py` — added `OrganizationRolePermission` import
+- `backend/app/core/authorization.py` — complete rewrite with `_resolve_permissions`, `authorize`, `require_permission`
+- `backend/app/api/v1/memberships.py` — replaced `verify_org_access`/`verify_org_admin` with `require_permission`
+- `backend/app/api/v1/resources.py` — replaced `verify_org_member` with `require_permission`
+
+---
+
 ## Next Task
 
 _To be filled after the next implementation._
