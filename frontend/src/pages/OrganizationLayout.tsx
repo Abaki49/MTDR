@@ -92,16 +92,26 @@ function OrgContent() {
         <OrgSidebar />
       </div>
       <div style={{ flex: 1, padding: 32, overflow: 'auto' }}>
-        {orgInfo && (
-          <div style={{ marginBottom: 24 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 700 }}>{orgInfo.organization_name}</h1>
-            <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>
-              {orgInfo.role_name} &middot; <span className={`badge badge-${orgInfo.status === 'ACTIVE' ? 'success' : 'danger'}`}>
-                {orgInfo.status}
-              </span>
-            </p>
-          </div>
-        )}
+        <div style={{ marginBottom: 24 }}>
+          {orgInfo ? (
+            <>
+              <h1 style={{ fontSize: 22, fontWeight: 700 }}>{orgInfo.organization_name}</h1>
+              <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>
+                {orgInfo.role_name} &middot;{' '}
+                <span className={`badge badge-${orgInfo.status === 'ACTIVE' ? 'success' : 'danger'}`}>
+                  {orgInfo.status}
+                </span>
+              </p>
+            </>
+          ) : user.is_super_admin ? (
+            <>
+              <h1 style={{ fontSize: 22, fontWeight: 700 }}>Organization #{orgId}</h1>
+              <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>
+                Super Admin &middot; <span className="badge badge-info">Full Access</span>
+              </p>
+            </>
+          ) : null}
+        </div>
         <Outlet context={{ orgId: parseInt(orgId, 10), orgInfo }} />
       </div>
     </div>

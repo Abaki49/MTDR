@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCan } from '../contexts/OrgPermissionsContext'
 import { getRoles, type Role } from '../api/roles'
@@ -36,7 +36,7 @@ export function PermissionsPage() {
 
   const orgIdNum = parseInt(orgId ?? '0', 10)
 
-  const { data: roles = [] } = useQuery({
+  const { data: roles = [], isError: rolesError, error: rolesErr } = useQuery({
     queryKey: ['roles', orgIdNum],
     queryFn: () => getRoles(orgIdNum),
     enabled: !!orgId,
@@ -45,6 +45,22 @@ export function PermissionsPage() {
   const editorRole = roles.find((r) => r.name === 'Editor')
 
   if (!orgId) return <div>Invalid organization</div>
+
+  if (rolesError) {
+    const statusCode = (rolesErr as any)?.response?.status
+    if (statusCode === 404) {
+      return (
+        <div className="state-message">
+          <h3>Access Denied</h3>
+          <p>You no longer have access to this organization's permissions.</p>
+          <Link to={`/organizations/${orgId}`} className="btn btn-primary" style={{ marginTop: 16, display: 'inline-flex' }}>
+            Back to Organization
+          </Link>
+        </div>
+      )
+    }
+    return <div className="state-message"><h3>Error</h3><p>Could not load roles.</p></div>
+  }
 
   if (!can('permission.manage')) {
     return <div className="state-message"><h3>Access Denied</h3><p>You do not have permission to manage permissions.</p></div>

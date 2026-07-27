@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCan } from '../contexts/OrgPermissionsContext'
 import { Modal, SelectField } from '../components/Modal'
@@ -24,7 +24,12 @@ export function MembersPage() {
 
   const orgIdNum = parseInt(orgId ?? '0', 10)
 
-  const { data: members = [], isLoading, isError } = useQuery({
+  const {
+    data: members = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ['members', orgIdNum],
     queryFn: () => getMembers(orgIdNum),
     enabled: !!orgId,
@@ -40,6 +45,7 @@ export function MembersPage() {
     mutationFn: (data: MemberCreate) => createMember(orgIdNum, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members', orgIdNum] })
+      queryClient.invalidateQueries({ queryKey: ['orgPermissions', orgIdNum] })
       setAddOpen(false)
     },
   })
@@ -49,6 +55,7 @@ export function MembersPage() {
       updateMember(orgIdNum, id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members', orgIdNum] })
+      queryClient.invalidateQueries({ queryKey: ['orgPermissions', orgIdNum] })
       setEditMember(null)
     },
   })
@@ -57,6 +64,7 @@ export function MembersPage() {
     mutationFn: (id: number) => deleteMember(orgIdNum, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members', orgIdNum] })
+      queryClient.invalidateQueries({ queryKey: ['orgPermissions', orgIdNum] })
     },
   })
 
@@ -89,6 +97,18 @@ export function MembersPage() {
   }
 
   if (isError) {
+    const statusCode = (error as any)?.response?.status
+    if (statusCode === 404) {
+      return (
+        <div className="state-message">
+          <h3>Access Denied</h3>
+          <p>You no longer have access to this organization's members.</p>
+          <Link to={`/organizations/${orgId}`} className="btn btn-primary" style={{ marginTop: 16, display: 'inline-flex' }}>
+            Back to Organization
+          </Link>
+        </div>
+      )
+    }
     return <div className="state-message"><h3>Error</h3><p>Could not load members.</p></div>
   }
 

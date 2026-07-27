@@ -1,6 +1,7 @@
-import { useParams, useOutletContext } from 'react-router-dom'
+import { useParams, useOutletContext, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useOrgPermissions } from '../contexts/OrgPermissionsContext'
+import { useAuth } from '../contexts/AuthContext'
 import { getMembers } from '../api/memberships'
 import { getResources } from '../api/resources'
 import type { MembershipInfo } from '../types/auth'
@@ -14,6 +15,7 @@ export function OrgDashboardPage() {
   const { orgId } = useParams<{ orgId: string }>()
   const { orgInfo } = useOutletContext<OrgDashboardContext>()
   const { permissions, isLoading, can } = useOrgPermissions()
+  const { user } = useAuth()
 
   const orgIdNum = parseInt(orgId ?? '0', 10)
 
@@ -31,12 +33,17 @@ export function OrgDashboardPage() {
 
   if (!orgId) return <div className="state-message"><h3>Invalid organization</h3></div>
 
+  const isSuperAdmin = user?.is_super_admin ?? false
+  const roleName = orgInfo?.role_name ?? (isSuperAdmin ? 'Super Admin' : 'N/A')
+  const statusValue = orgInfo?.status ?? (isSuperAdmin ? 'ACTIVE' : 'N/A')
+  const statusBadge = statusValue === 'ACTIVE' ? 'success' : 'danger'
+
   return (
     <div>
       <div className="stats-grid" style={{ marginBottom: 24 }}>
         <div className="stat-card">
           <div className="label">Your Role</div>
-          <div className="value primary">{orgInfo?.role_name ?? 'N/A'}</div>
+          <div className="value primary">{roleName}</div>
         </div>
         {can('resource.read') && (
           <div className="stat-card">
@@ -45,17 +52,17 @@ export function OrgDashboardPage() {
           </div>
         )}
         <div className="stat-card">
-          <div className="label">{can('membership.read') ? 'Members' : 'Your Role'}</div>
-          <div className="value success">{can('membership.read') ? members.length : (orgInfo?.role_name ?? 'N/A')}</div>
+          <div className="label">{can('membership.read') ? 'Members' : 'Role'}</div>
+          <div className="value success">{can('membership.read') ? members.length : roleName}</div>
         </div>
         <div className="stat-card">
           <div className="label">Permissions</div>
-          <div className="value warning">{permissions.length}</div>
+          <div className="value warning">{permissions.includes('*') ? 'All' : permissions.length}</div>
         </div>
         <div className="stat-card">
           <div className="label">Status</div>
-          <div className="value" style={{ color: orgInfo?.status === 'ACTIVE' ? 'var(--success)' : 'var(--danger)' }}>
-            {orgInfo?.status ?? 'N/A'}
+          <div className="value" style={{ color: statusValue === 'ACTIVE' ? 'var(--success)' : 'var(--danger)' }}>
+            {statusValue}
           </div>
         </div>
       </div>
