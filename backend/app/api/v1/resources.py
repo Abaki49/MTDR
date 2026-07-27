@@ -1,7 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.authorization import require_permission
+from app.core.auth import get_current_user
+from app.core.authorization import authorize, require_permission
+from app.database.models.resource import Resource
 from app.database.models.user import User
 from app.database.session import get_db
 from app.schemas.resources import ResourceCreate, ResourceResponse, ResourceUpdate
@@ -94,3 +98,63 @@ def delete_resource_by_id(
     if resource is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     delete_resource(db, resource)
+
+
+@router.get("/resources/{resource_id}/download")
+async def download_resource(
+    resource_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    resource = db.query(Resource).filter(Resource.id == resource_id).first()
+    if resource is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    await authorize(db, current_user, resource.organization_id, "resource.read")
+    payload = json.dumps({"id": resource.id, "title": resource.title, "storage_key": resource.storage_key})
+    return Response(
+        content=payload,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{resource.title}.json"'},
+    )
+
+
+@router.put(
+    "/organizations/{organization_id}/resources/{resource_id}/publish",
+    response_model=ResourceResponse,
+)
+def publish_resource(
+    organization_id: int,
+    resource_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("resource.publish")),
+):
+    resource = get_org_resource(db, organization_id, resource_id)
+    if resource is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if resource.visibility == "PUBLIC":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already published")
+    resource.visibility = "PUBLIC"
+    db.commit()
+    db.refresh(resource)
+    return ResourceResponse.model_validate(resource)
+
+
+@router.put(
+    "/organizations/{organization_id}/resources/{resource_id}/archive",
+    response_model=ResourceResponse,
+)
+def archive_resource(
+    organization_id: int,
+    resource_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("resource.archive")),
+):
+    resource = get_org_resource(db, organization_id, resource_id)
+    if resource is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if resource.visibility == "PRIVATE":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already archived")
+    resource.visibility = "PRIVATE"
+    db.commit()
+    db.refresh(resource)
+    return ResourceResponse.model_validate(resource)

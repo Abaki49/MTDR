@@ -2,6 +2,7 @@ import { useParams, useOutletContext } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useOrgPermissions } from '../contexts/OrgPermissionsContext'
 import { getMembers } from '../api/memberships'
+import { getResources } from '../api/resources'
 import type { MembershipInfo } from '../types/auth'
 
 interface OrgDashboardContext {
@@ -12,14 +13,20 @@ interface OrgDashboardContext {
 export function OrgDashboardPage() {
   const { orgId } = useParams<{ orgId: string }>()
   const { orgInfo } = useOutletContext<OrgDashboardContext>()
-  const { permissions, isLoading } = useOrgPermissions()
+  const { permissions, isLoading, can } = useOrgPermissions()
 
   const orgIdNum = parseInt(orgId ?? '0', 10)
 
   const { data: members = [] } = useQuery({
     queryKey: ['members', orgIdNum],
     queryFn: () => getMembers(orgIdNum),
-    enabled: !!orgId,
+    enabled: !!orgId && can('membership.read'),
+  })
+
+  const { data: resources = [] } = useQuery({
+    queryKey: ['resources', orgIdNum],
+    queryFn: () => getResources(orgIdNum),
+    enabled: !!orgId && can('resource.read'),
   })
 
   if (!orgId) return <div className="state-message"><h3>Invalid organization</h3></div>
@@ -31,9 +38,15 @@ export function OrgDashboardPage() {
           <div className="label">Your Role</div>
           <div className="value primary">{orgInfo?.role_name ?? 'N/A'}</div>
         </div>
+        {can('resource.read') && (
+          <div className="stat-card">
+            <div className="label">Resources</div>
+            <div className="value">{resources.length}</div>
+          </div>
+        )}
         <div className="stat-card">
-          <div className="label">Total Members</div>
-          <div className="value success">{members.length}</div>
+          <div className="label">{can('membership.read') ? 'Members' : 'Your Role'}</div>
+          <div className="value success">{can('membership.read') ? members.length : (orgInfo?.role_name ?? 'N/A')}</div>
         </div>
         <div className="stat-card">
           <div className="label">Permissions</div>

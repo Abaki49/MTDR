@@ -67,6 +67,8 @@ def seed():
             Permission(name="resource.create"),
             Permission(name="resource.update"),
             Permission(name="resource.delete"),
+            Permission(name="resource.publish"),
+            Permission(name="resource.archive"),
             Permission(name="permission.manage"),
             Permission(name="audit.read"),
         ]

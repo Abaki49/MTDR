@@ -1,6 +1,6 @@
 import { Outlet, useParams, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { OrgPermissionsProvider, useCan } from '../contexts/OrgPermissionsContext'
+import { OrgPermissionsProvider, useCan, useOrgPermissions } from '../contexts/OrgPermissionsContext'
 
 function OrgSidebar() {
   const { orgId } = useParams<{ orgId: string }>()
@@ -23,6 +23,16 @@ function OrgSidebar() {
         <span className="icon">&#9632;</span>
         Overview
       </Link>
+
+      {can('resource.read') && (
+        <Link
+          to={`${base}/resources`}
+          className={`sidebar-link${isActive(`${base}/resources`) ? ' active' : ''}`}
+        >
+          <span className="icon">&#9632;</span>
+          Resources
+        </Link>
+      )}
 
       {can('membership.read') && (
         <Link
@@ -56,8 +66,21 @@ function OrgSidebar() {
 function OrgContent() {
   const { orgId } = useParams<{ orgId: string }>()
   const { user } = useAuth()
+  const { isError: permError } = useOrgPermissions()
 
   if (!orgId || !user) return null
+
+  if (permError) {
+    return (
+      <div className="state-message">
+        <h3>Access Denied</h3>
+        <p>You don't have access to this organization or it doesn't exist.</p>
+        <Link to="/organizations" className="btn btn-primary" style={{ marginTop: 16, display: 'inline-flex' }}>
+          Back to Organizations
+        </Link>
+      </div>
+    )
+  }
 
   const orgInfo = user.memberships.find(
     (m) => m.organization_id === parseInt(orgId, 10),
