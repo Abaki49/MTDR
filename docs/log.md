@@ -619,6 +619,45 @@ All 404 responses verified to be `404 Not Found` (never 403).
 
 ---
 
+---
+
+## BE-110 — Enforce Role Rank Immutability & Implement Roles API
+
+**Status:** Completed
+
+### What was implemented
+- **`app/schemas/roles.py`** — `RoleResponse` schema with `id`, `name`, `is_system`, `rank`. No `RoleCreate` or `RoleUpdate` schemas exist, making `rank` strictly read-only at the API layer.
+- **`app/services/role_service.py`** — `list_roles(db)` returns all roles ordered by `rank`.
+- **`app/api/v1/roles.py`** — `GET /v1/organizations/{organization_id}/roles` guarded by `require_permission("resource.read")` (available to all active members). Returns `list[RoleResponse]` sorted by rank.
+- **`app/seed.py`** — Seed script for test data consistency.
+
+### Key decisions
+- **No write endpoints for roles.** Only `GET` is implemented per Architecture Section 12. No `POST`, `PUT`, or `PATCH` routes exist for roles.
+- **`rank` omitted from all input schemas.** Only `RoleResponse` (output) contains `rank`. This enforces immutability at the schema layer — any future create/update schema will need to explicitly omit `rank`.
+- **`require_permission("resource.read")`** used as the gate — all active members (Org Admin + Editor) have this permission, so the role list is visible to everyone with ACTIVE membership.
+- **Super admin bypass** works naturally — `authorize()` returns early for super admins, so they see any org's roles without membership.
+- **No service-layer rank mutation.** Grep confirmed zero `Role.rank` writes anywhere in the codebase.
+
+### Verification results
+| Step | Action | Result |
+|------|--------|--------|
+| 1 | Login as Editor (member), GET roles for Org 1 | 200 — `[{"id":1,"name":"Org Admin","is_system":true,"rank":1}, {"id":2,"name":"Editor","is_system":true,"rank":2}]` |
+| 2 | Login as super admin, GET roles for Org 1 | 200 — same result |
+| 3 | Non-member user GET roles for non-existent org | 404 — membership check enforced |
+| 4 | Verify only GET methods exist in roles router | PASS — only `@router.get` |
+| 5 | Verify `RoleResponse` has `rank`, no `RoleCreate`/`RoleUpdate` | PASS — rank is read-only |
+
+### Files created
+- `backend/app/schemas/roles.py`
+- `backend/app/services/role_service.py`
+- `backend/app/seed.py`
+
+### Files modified
+- `backend/app/api/v1/roles.py` — implemented GET endpoint
+- `backend/app/schemas/__init__.py` — exports `RoleResponse`
+
+---
+
 ## Next Task
 
 _To be filled after the next implementation._

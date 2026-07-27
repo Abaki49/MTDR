@@ -24,3 +24,4 @@ from app.schemas.permissions import (
     PermissionOverride,
     PermissionOverrideResponse,
 )
+from app.schemas.roles import RoleResponse
