@@ -4,6 +4,7 @@ from app.database.models.membership import Membership
 from app.database.models.role import Role
 from app.database.models.user import User
 from app.schemas.memberships import MembershipCreate, MembershipUpdate
+from app.services.audit_service import log_action
 
 
 def _get_caller_rank(db: Session, caller: User, org_id: int) -> int:
@@ -68,8 +69,11 @@ def upsert_member(
         .first()
     )
     if existing:
+        before = {"user_id": existing.user_id, "role_id": existing.role_id, "status": existing.status}
         existing.role_id = data.role_id
         existing.status = "ACTIVE"
+        after = {"user_id": existing.user_id, "role_id": existing.role_id, "status": existing.status}
+        log_action(db, caller.id, organization_id, "update", "membership", existing.id, before, after)
         db.commit()
         db.refresh(existing)
         return existing
@@ -81,6 +85,9 @@ def upsert_member(
         status="ACTIVE",
     )
     db.add(membership)
+    db.flush()
+    after = {"user_id": membership.user_id, "role_id": membership.role_id, "status": membership.status}
+    log_action(db, caller.id, organization_id, "create", "membership", membership.id, None, after)
     db.commit()
     db.refresh(membership)
     return membership
@@ -93,6 +100,8 @@ def update_member(
     data: MembershipUpdate,
     caller: User,
 ) -> Membership:
+    before = {"user_id": member.user_id, "role_id": member.role_id, "status": member.status}
+
     if data.role_id is not None:
         target_role = db.query(Role).filter(Role.id == data.role_id).first()
         if target_role is None:
@@ -109,11 +118,15 @@ def update_member(
     if data.status is not None:
         member.status = data.status
 
+    after = {"user_id": member.user_id, "role_id": member.role_id, "status": member.status}
+    log_action(db, caller.id, organization_id, "update", "membership", member.id, before, after)
     db.commit()
     db.refresh(member)
     return member
 
 
-def delete_member(db: Session, member: Membership) -> None:
+def delete_member(db: Session, member: Membership, caller: User) -> None:
+    before = {"user_id": member.user_id, "role_id": member.role_id, "status": member.status}
+    log_action(db, caller.id, member.organization_id, "delete", "membership", member.id, before, None)
     db.delete(member)
     db.commit()

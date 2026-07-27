@@ -103,9 +103,9 @@ def delete_member_by_id(
     organization_id: int,
     member_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("membership.delete")),
+    caller: User = Depends(require_permission("membership.delete")),
 ):
     member = get_member(db, organization_id, member_id)
     if member is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    delete_member(db, member)
+    delete_member(db, member, caller)

@@ -658,6 +658,59 @@ All 404 responses verified to be `404 Not Found` (never 403).
 
 ---
 
+---
+
+## BE-111 — Implement Audit Logging Service
+
+**Status:** Completed
+
+### What was implemented
+- **`app/database/models/audit_log.py`** — `AuditLog` model with `id`, `organization_id`, `actor_id`, `action`, `entity_type`, `entity_id`, `before` (JSONB), `after` (JSONB), `created_at`. Migration `839c5ccf3173`.
+- **`app/schemas/audit.py`** — `AuditLogResponse` Pydantic schema.
+- **`app/services/audit_service.py`** — `log_action(db, actor_id, org_id, action, entity_type, entity_id, before, after)` appends an `AuditLog` to the DB session.
+- **Membership service integration** — `upsert_member`, `update_member`, `delete_member` accept `actor_id` (via `caller.id`) and call `log_action` before `db.commit()` — same transaction.
+- **Permissions PUT integration** — `put_role_permissions` captures old overrides as `before`, new overrides as `after`, calls `log_action` before `db.commit()`.
+- **`app/api/v1/audit.py`** — Two endpoints:
+  - `GET /v1/organizations/{org_id}/audit-logs` — requires `audit.read` permission, returns org-scoped logs descending by `created_at`.
+  - `GET /v1/audit-logs?organization_id={id}` — Super Admin only, returns all logs optionally filtered by org.
+- **`app/seed.py`** — Added `permission.manage` and `audit.read` permissions; Org Admin gets all 10 permissions.
+
+### Key decisions
+- **Same-transaction audit entries:** `log_action` calls `db.add(entry)` but *does not commit*. The caller (service layer) commits, ensuring the audit entry is atomically persisted with the mutation. If the mutation fails mid-flight, the audit entry is also rolled back.
+- **`entity_type` values:** `"membership"` for membership CRUD, `"role_permissions"` for permission overrides (since one PUT replaces all overrides for a role).
+- **Before/after capture:** For upserts, `before=None` on create, `before=existing_state` on update. For deletes, `after=None`. For permissions, `before` and `after` are dicts of `{permission_id: allowed}`.
+- **JSONB handling:** Python dicts are passed directly to the mapped column; SQLAlchemy + psycopg2 handle the `json.dumps`/`json.loads` automatically.
+- **Added `permission.manage` and `audit.read`** to the seed so the permissions endpoint works for non-super-admin users and audit endpoints have an appropriate guard.
+
+### Verification results
+| Step | Action | Result |
+|------|--------|--------|
+| 1 | Org Admin updates member's role | 200 — audit entry created (action=update, type=membership) |
+| 2 | Org Admin updates permission override | 200 — audit entry created (action=update, type=role_permissions) |
+| 3 | GET org audit-logs | 200 — 2 entries returned with before/after JSON objects |
+| 4 | Editor (no audit.read) GET org audit-logs | 404 — permission denied |
+| 5 | Super Admin GET /v1/audit-logs | 200 — all logs across orgs |
+| 6 | Super Admin GET /v1/audit-logs?organization_id=1 | 200 — filtered to org 1 |
+| 7 | Super Admin creates membership | 201 — audit entry (action=create, type=membership) |
+| 8 | Super Admin deletes membership | 204 — audit entry (action=delete, type=membership) |
+
+### Files created
+- `backend/app/database/models/audit_log.py`
+- `backend/app/database/migrations/versions/839c5ccf3173_create_audit_logs_table.py`
+- `backend/app/schemas/audit.py`
+- `backend/app/services/audit_service.py`
+
+### Files modified
+- `backend/app/database/models/__init__.py` — exports `AuditLog`
+- `backend/app/services/membership_service.py` — `upsert_member`, `update_member`, `delete_member` now accept `actor_id` and log audit entries
+- `backend/app/api/v1/memberships.py` — pass `caller.id` to service, fix `delete` route to capture `caller` by name
+- `backend/app/api/v1/permissions.py` — capture `caller`, add `log_action` call before commit with before/after override state
+- `backend/app/api/v1/audit.py` — implemented GET endpoints
+- `backend/app/schemas/__init__.py` — exports `AuditLogResponse`
+- `backend/app/seed.py` — added `permission.manage` and `audit.read` permissions
+
+---
+
 ## Next Task
 
 _To be filled after the next implementation._

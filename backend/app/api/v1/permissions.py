@@ -16,6 +16,7 @@ from app.database.models.permission import Permission
 from app.database.models.user import User
 from app.database.session import get_db
 from app.schemas.permissions import PermissionOverride, PermissionOverrideResponse
+from app.services.audit_service import log_action
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ async def put_role_permissions(
     role_id: int,
     body: list[PermissionOverride],
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("permission.manage")),
+    caller: User = Depends(require_permission("permission.manage")),
 ):
     existing = (
         db.query(OrganizationRolePermission)
@@ -89,6 +90,8 @@ async def put_role_permissions(
         )
         .all()
     )
+    before = {str(o.permission_id): o.allowed for o in existing}
+
     for row in existing:
         db.delete(row)
 
@@ -108,6 +111,8 @@ async def put_role_permissions(
             )
         )
 
+    after = {str(o.permission_id): o.allowed for o in body}
+    log_action(db, caller.id, organization_id, "update", "role_permissions", role_id, before, after)
     db.commit()
 
     try:
