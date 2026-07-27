@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from app.core.config import settings
 from app.database.base import Base
+from app.database.models import *  # noqa: F401, F403 — load models so they register with Base.metadata
 
 config = context.config
 
