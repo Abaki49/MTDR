@@ -6,6 +6,7 @@ from app.api.v1.permissions import router as permissions_router
 from app.api.v1.resources import router as resources_router
 from app.api.v1.audit import router as audit_router
 from app.api.v1.public import router as public_router
+from app.api.v1.user_context import router as user_context_router
 
 routers = [
     auth_router,
@@ -16,4 +17,5 @@ routers = [
     resources_router,
     audit_router,
     public_router,
+    user_context_router,
 ]

@@ -711,6 +711,40 @@ All 404 responses verified to be `404 Not Found` (never 403).
 
 ---
 
-## Next Task
+## BE-112 — Implement User Context Permissions Endpoint
 
-_To be filled after the next implementation._
+**Status:** Completed
+
+### What was implemented
+- **`app/schemas/auth.py`** — `UserPermissionsResponse` schema with `permissions: list[str]`.
+- **`app/api/v1/user_context.py`** — `GET /v1/organizations/{organization_id}/me/permissions` with the following logic:
+  1. If `current_user.is_super_admin` → return `{"permissions": ["*"]}` immediately (bypasses membership check).
+  2. Query DB for `ACTIVE` membership matching `current_user.id` and `organization_id`.
+  3. If no membership found → `404 Not Found`.
+  4. Call `await resolve_permissions(db, membership.role_id, organization_id)` which uses Redis cache (30s TTL).
+  5. Return sorted list of permission strings.
+
+### Key decisions
+- **No `require_permission` dependency** — This endpoint fetches the user's own permissions; it cannot gate on a specific permission. Custom inline auth logic verifies ACTIVE membership (or super admin bypass).
+- **Super admin returns `["*"]`** — Matches the architectural intent that super admins bypass all permission checks. A hardcoded wildcard avoids querying the permission resolver unnecessarily.
+- **Route in its own file (`user_context.py`)** — The `auth` router has `prefix="/auth"` (wrong prefix) and the `organizations` router has `dependencies=[Depends(require_super_admin)]` (wrong gate). A dedicated router with no prefix and no router-level deps is the cleanest fit.
+- **Async handler** — Required because `resolve_permissions` is async (Redis `await`).
+
+### Verification results
+| Step | Action | Result |
+|------|--------|--------|
+| 1 | Editor (role 2, Org 1) GET /me/permissions | `["resource.create", "resource.read", "resource.update"]` — 3 permissions from seed |
+| 2 | Editor (no membership in Org 999) GET /me/permissions | 404 — membership check enforced |
+| 3 | Super Admin GET /me/permissions for any org | `["*"]` — wildcard bypass |
+| 4 | Org Admin GET /me/permissions | 10 permissions (all seeded) |
+| 5 | Redis cache populated after call | TTL ~28s, key `perms:org:1:role:2` |
+
+### Files created
+- `backend/app/api/v1/user_context.py`
+
+### Files modified
+- `backend/app/schemas/auth.py` — added `UserPermissionsResponse`
+- `backend/app/schemas/__init__.py` — exports `UserPermissionsResponse`
+- `backend/app/api/v1/__init__.py` — wired `user_context_router`
+
+---

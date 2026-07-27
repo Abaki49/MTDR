@@ -3,6 +3,10 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
+class UserPermissionsResponse(BaseModel):
+    permissions: list[str]
+
+
 class LoginRequest(BaseModel):
     email: str
     password: str

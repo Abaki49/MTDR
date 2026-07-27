@@ -2,6 +2,7 @@ from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
     TokenResponse,
+    UserPermissionsResponse,
     UserResponse,
 )
 from app.schemas.memberships import (
