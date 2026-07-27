@@ -23,10 +23,15 @@ build/
 # Environment
 .env
 .env.local
+.env.production
 venv/
 __pycache__/
 *.pyc
 *.pyo
 
-# Custom
-docs/
+# Docker
+.dockerignore
+
+# Node
+frontend/node_modules/
+frontend/dist/

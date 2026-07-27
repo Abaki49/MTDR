@@ -1,22 +1,25 @@
 services:
   db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: mtdr
-      POSTGRES_PASSWORD: mtdr
-      POSTGRES_DB: mtdr
+    container_name: mtdr-db
+    env_file:
+      - .env
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mtdr"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mtdr}"]
       interval: 3s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
+    networks:
+      - mtdr-network
 
   redis:
     image: redis:7-alpine
+    container_name: mtdr-redis
     ports:
       - "6379:6379"
     healthcheck:
@@ -24,21 +27,63 @@ services:
       interval: 3s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
+    networks:
+      - mtdr-network
 
-  app:
-    build: .
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mtdr-backend
     ports:
       - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql://mtdr:mtdr@db:5432/mtdr
-      CORS_ORIGINS: '["http://localhost:5173"]'
-      JWT_SECRET_KEY: dev-secret-key-change-in-production
-      REDIS_URL: redis://redis:6379/0
+    env_file:
+      - ./backend/.env
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - mtdr-network
+    develop:
+      watch:
+        - action: sync
+          path: ./backend/app
+          target: /app/app
+          ignore:
+            - __pycache__/
+        - action: rebuild
+          path: ./backend/requirements.txt
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: mtdr-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - mtdr-network
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/src
+        - action: sync
+          path: ./frontend/public
+          target: /app/public
+
+networks:
+  mtdr-network:
+    driver: bridge
 
 volumes:
   pgdata:
