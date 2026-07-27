@@ -1,33 +1,45 @@
-import { Outlet, useParams, Link, useLocation } from 'react-router-dom'
+import { Outlet, useParams, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { OrgPermissionsProvider, useCan } from '../contexts/OrgPermissionsContext'
 
-function OrgNav() {
+function OrgSidebar() {
   const { orgId } = useParams<{ orgId: string }>()
   const location = useLocation()
+  const navigate = useNavigate()
   const can = useCan()
 
-  const linkStyle = (path: string): React.CSSProperties => ({
-    display: 'block',
-    padding: '8px 16px',
-    textDecoration: 'none',
-    color: location.pathname === path ? '#1976d2' : '#333',
-    fontWeight: location.pathname === path ? 600 : 400,
-    background: location.pathname === path ? '#e3f2fd' : 'transparent',
-    borderRadius: 4,
-  })
+  const base = `/organizations/${orgId}`
+
+  const isActive = (path: string) => location.pathname === path
 
   return (
-    <nav style={{ width: 200, borderRight: '1px solid #ddd', padding: 16 }}>
-      <Link to={`/organizations/${orgId}`} style={linkStyle(`/organizations/${orgId}`)}>
-        Dashboard
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div className="sidebar-section-label" style={{ paddingTop: 0 }}>Organization</div>
+
+      <Link
+        to={base}
+        className={`sidebar-link${isActive(base) ? ' active' : ''}`}
+      >
+        <span className="icon">&#9632;</span>
+        Overview
       </Link>
+
       {can('membership.read') && (
-        <Link to={`/organizations/${orgId}/members`} style={linkStyle(`/organizations/${orgId}/members`)}>
+        <Link
+          to={`${base}/members`}
+          className={`sidebar-link${isActive(`${base}/members`) ? ' active' : ''}`}
+        >
+          <span className="icon">&#9632;</span>
           Members
         </Link>
       )}
-    </nav>
+
+      <div style={{ marginTop: 12 }}>
+        <button className="logout-btn" onClick={() => navigate('/organizations')}>
+          &larr; Back to Organizations
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -42,9 +54,21 @@ function OrgContent() {
   )
 
   return (
-    <div style={{ display: 'flex', minHeight: 'calc(100vh - 80px)' }}>
-      <OrgNav />
-      <div style={{ flex: 1, padding: 24 }}>
+    <div style={{ display: 'flex', minHeight: 'calc(100vh - 64px)', margin: -32 }}>
+      <div style={{ width: 220, background: '#fff', borderRight: '1px solid var(--gray-200)', padding: 24, flexShrink: 0 }}>
+        <OrgSidebar />
+      </div>
+      <div style={{ flex: 1, padding: 32, overflow: 'auto' }}>
+        {orgInfo && (
+          <div style={{ marginBottom: 24 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 700 }}>{orgInfo.organization_name}</h1>
+            <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>
+              {orgInfo.role_name} &middot; <span className={`badge badge-${orgInfo.status === 'ACTIVE' ? 'success' : 'danger'}`}>
+                {orgInfo.status}
+              </span>
+            </p>
+          </div>
+        )}
         <Outlet context={{ orgId: parseInt(orgId, 10), orgInfo }} />
       </div>
     </div>
@@ -54,7 +78,7 @@ function OrgContent() {
 export function OrganizationLayout() {
   const { orgId } = useParams<{ orgId: string }>()
 
-  if (!orgId) return <div>Invalid organization</div>
+  if (!orgId) return <div className="state-message"><h3>Invalid organization</h3></div>
 
   return (
     <OrgPermissionsProvider orgId={parseInt(orgId, 10)}>

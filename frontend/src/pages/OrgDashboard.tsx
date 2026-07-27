@@ -1,5 +1,7 @@
 import { useParams, useOutletContext } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useOrgPermissions } from '../contexts/OrgPermissionsContext'
+import { getMembers } from '../api/memberships'
 import type { MembershipInfo } from '../types/auth'
 
 interface OrgDashboardContext {
@@ -12,26 +14,59 @@ export function OrgDashboardPage() {
   const { orgInfo } = useOutletContext<OrgDashboardContext>()
   const { permissions, isLoading } = useOrgPermissions()
 
-  if (!orgId) return <div>Invalid organization</div>
+  const orgIdNum = parseInt(orgId ?? '0', 10)
+
+  const { data: members = [] } = useQuery({
+    queryKey: ['members', orgIdNum],
+    queryFn: () => getMembers(orgIdNum),
+    enabled: !!orgId,
+  })
+
+  if (!orgId) return <div className="state-message"><h3>Invalid organization</h3></div>
 
   return (
     <div>
-      <h1>{orgInfo?.organization_name ?? `Organization #${orgId}`}</h1>
-      <p>
-        Role: <strong>{orgInfo?.role_name ?? 'N/A'}</strong> &middot; Status: {orgInfo?.status ?? 'N/A'}
-      </p>
+      <div className="stats-grid" style={{ marginBottom: 24 }}>
+        <div className="stat-card">
+          <div className="label">Your Role</div>
+          <div className="value primary">{orgInfo?.role_name ?? 'N/A'}</div>
+        </div>
+        <div className="stat-card">
+          <div className="label">Total Members</div>
+          <div className="value success">{members.length}</div>
+        </div>
+        <div className="stat-card">
+          <div className="label">Permissions</div>
+          <div className="value warning">{permissions.length}</div>
+        </div>
+        <div className="stat-card">
+          <div className="label">Status</div>
+          <div className="value" style={{ color: orgInfo?.status === 'ACTIVE' ? 'var(--success)' : 'var(--danger)' }}>
+            {orgInfo?.status ?? 'N/A'}
+          </div>
+        </div>
+      </div>
 
-      <h2 style={{ marginTop: 32 }}>Your Permissions</h2>
-      {isLoading ? (
-        <p>Loading permissions...</p>
-      ) : (
-        <ul>
-          {permissions.length === 0 && <li>No permissions</li>}
-          {permissions.map((p) => (
-            <li key={p}>{p === '*' ? 'Super Admin (all permissions)' : p}</li>
-          ))}
-        </ul>
-      )}
+      <div className="card">
+        <div className="card-header">
+          <h2>Your Permissions</h2>
+        </div>
+        <div className="card-body">
+          {isLoading ? (
+            <p style={{ color: 'var(--gray-500)' }}>Loading...</p>
+          ) : permissions.length === 0 ? (
+            <p style={{ color: 'var(--gray-500)' }}>No permissions</p>
+          ) : (
+            <div className="permissions-grid">
+              {permissions.map((p) => (
+                <span key={p} className="permission-tag">
+                  {p === '*' ? 'Super Admin (all)' : p}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

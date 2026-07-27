@@ -11,7 +11,7 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
 
   if (user) {
-    navigate('/dashboard', { replace: true })
+    navigate('/organizations', { replace: true })
     return null
   }
 
@@ -21,7 +21,7 @@ export function LoginPage() {
     setSubmitting(true)
     try {
       await login({ email, password })
-      navigate('/dashboard', { replace: true })
+      navigate('/organizations', { replace: true })
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response: { data?: { detail?: string } } }
@@ -35,34 +35,44 @@ export function LoginPage() {
   }
 
   return (
-    <div style={{ maxWidth: 400, margin: '100px auto', padding: '0 16px' }}>
-      <h1>MTDR Login</h1>
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: 12 }}>
-          <label>Email</label><br />
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{ width: '100%', padding: 8, marginTop: 4 }}
-          />
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <label>Password</label><br />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{ width: '100%', padding: 8, marginTop: 4 }}
-          />
-        </div>
-        {error && <p style={{ color: 'red' }}>{error}</p>}
-        <button type="submit" disabled={submitting} style={{ padding: '8px 24px' }}>
-          {submitting ? 'Logging in...' : 'Login'}
-        </button>
-      </form>
+    <div className="login-page">
+      <div className="login-card">
+        <h1>Welcome back</h1>
+        <p className="subtitle">Sign in to your MTDR account</p>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">Email</label>
+            <input
+              className="form-input"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Password</label>
+            <input
+              className="form-input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              required
+            />
+          </div>
+          {error && <p className="form-error">{error}</p>}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="btn btn-primary"
+            style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+          >
+            {submitting ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+      </div>
     </div>
   )
 }
