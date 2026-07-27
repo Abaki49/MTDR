@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 export function DashboardPage() {
@@ -36,6 +36,18 @@ export function DashboardPage() {
           <div className="value warning">{user.is_super_admin ? 'Super Admin' : 'User'}</div>
         </div>
       </div>
+
+      {user.is_super_admin && (
+        <div style={{ marginBottom: 24, padding: 16, background: 'var(--primary-light)', borderRadius: 'var(--radius-lg)', border: '1px solid #bfdbfe' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <strong style={{ fontSize: 15 }}>Super Admin</strong>
+              <p style={{ fontSize: 13, color: 'var(--gray-500)', marginTop: 2 }}>You have full access across all organizations.</p>
+            </div>
+            <Link to="/admin" className="btn btn-primary btn-sm">Go to Admin Panel</Link>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <div className="card-header">

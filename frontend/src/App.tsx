@@ -8,6 +8,7 @@ import { OrganizationsPage } from './pages/Organizations'
 import { OrganizationLayout } from './pages/OrganizationLayout'
 import { OrgDashboardPage } from './pages/OrgDashboard'
 import { MembersPage } from './pages/Members'
+import { AdminPage } from './pages/Admin'
 
 const queryClient = new QueryClient()
 
@@ -45,6 +46,14 @@ export function App() {
               <Route index element={<OrgDashboardPage />} />
               <Route path="members" element={<MembersPage />} />
             </Route>
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AdminPage />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

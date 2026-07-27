@@ -1,3 +1,4 @@
+from app.api.v1.admin import router as admin_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.organizations import router as organizations_router
 from app.api.v1.memberships import router as memberships_router
@@ -9,6 +10,7 @@ from app.api.v1.public import router as public_router
 from app.api.v1.user_context import router as user_context_router
 
 routers = [
+    admin_router,
     auth_router,
     organizations_router,
     memberships_router,

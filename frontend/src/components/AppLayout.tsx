@@ -35,6 +35,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <span className="icon">&#9632;</span>
             Organizations
           </Link>
+
+          {user.is_super_admin && (
+            <>
+              <div className="sidebar-section-label">Administration</div>
+              <Link
+                to="/admin"
+                className={`sidebar-link${currentPath.startsWith('/admin') ? ' active' : ''}`}
+              >
+                <span className="icon">&#9632;</span>
+                Admin Panel
+              </Link>
+            </>
+          )}
         </nav>
 
         <div className="sidebar-footer">
@@ -70,6 +83,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
 function getPageTitle(path: string): string {
   if (path === '/dashboard') return 'Dashboard'
+  if (path === '/admin') return 'Admin Panel'
   if (path === '/organizations') return 'Organizations'
   if (path.startsWith('/organizations/')) {
     const rest = path.split('/organizations/')[1] || ''
