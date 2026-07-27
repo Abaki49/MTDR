@@ -4,6 +4,11 @@ from app.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
+from app.schemas.memberships import (
+    MembershipCreate,
+    MembershipResponse,
+    MembershipUpdate,
+)
 from app.schemas.organizations import (
     OrganizationCreate,
     OrganizationResponse,
