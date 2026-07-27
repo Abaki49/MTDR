@@ -19,3 +19,8 @@ export async function getMe(): Promise<User> {
   const res = await client.get<User>('/auth/me')
   return res.data
 }
+
+export async function getMyPermissions(orgId: number): Promise<string[]> {
+  const res = await client.get<{ permissions: string[] }>(`/organizations/${orgId}/me/permissions`)
+  return res.data.permissions
+}

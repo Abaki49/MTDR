@@ -748,3 +748,76 @@ All 404 responses verified to be `404 Not Found` (never 403).
 - `backend/app/api/v1/__init__.py` — wired `user_context_router`
 
 ---
+
+## FE-102 & FE-103 — Organization Dashboard, Permissions Context & Members Management UI
+
+**Status:** Completed
+
+### What was implemented
+
+**API Layer (frontend/src/api/):**
+- `auth.ts` — added `getMyPermissions(orgId)` calling `GET /v1/organizations/{orgId}/me/permissions`.
+- `organizations.ts` — `getOrganizations()` calling `GET /v1/organizations`.
+- `memberships.ts` — `getMembers`, `createMember`, `updateMember`, `deleteMember` with `Member`, `MemberCreate`, `MemberUpdate` types.
+- `roles.ts` — `getRoles()` calling `GET /v1/organizations/{orgId}/roles`.
+
+**Context Layer:**
+- `OrgPermissionsContext.tsx` — React Context that fetches permissions via `useQuery` keyed by `orgId`, provides `can(permission)` method (checks for `"*"` wildcard or exact match), and exports `useCan()` hook. Uses 30-second stale time.
+
+**Pages:**
+- `Organizations.tsx` — Lists organizations from `AuthContext.user.memberships`. Clicking an org navigates to `/organizations/:orgId`.
+- `OrganizationLayout.tsx` — Parent layout extracting `orgId` from URL params, wrapping children in `OrgPermissionsProvider`. Sidebar navigation with conditional links based on `can(...)`:
+  - Dashboard link (always visible)
+  - Members link (only if `can("membership.read")`)
+- `OrgDashboard.tsx` — Default child route showing org name, user's role/status, and permissions list.
+- `Members.tsx` — Full CRUD Members page:
+  - Table with columns (ID, User ID, Role, Status, Actions).
+  - "Add Member" button (visible only if `can("membership.create")`).
+  - "Edit" button per row (visible only if `can("membership.update")`).
+  - Add Member modal with User ID input + Role dropdown (populated from `GET /roles`).
+  - Edit Member modal with Role + Status dropdowns.
+  - Role dropdown populated from `useQuery(['roles', orgId])`.
+  - Mutations use `useMutation` with `onSuccess` invalidation of `['members', orgId]`.
+- `Dashboard.tsx` — Added "View Organizations" link.
+
+**Router (App.tsx):**
+- `/organizations` → `OrganizationsPage`
+- `/organizations/:orgId` → `OrganizationLayout` (nested)
+  - Index → `OrgDashboardPage`
+  - `members` → `MembersPage`
+
+### Key decisions
+- **`OrgPermissionsContext` wraps only the org layout subtree** — each org visit re-fetches permissions. The context stores a single org's permissions (not all orgs at once), keeping the API simple.
+- **`can()` checks for `"*"`** — Super admins get `["*"]` from the backend, so `can()` returns `true` for everything without additional logic.
+- **No global state manager** — TanStack Query handles caching, stale time (30s), and invalidation.
+- **Conditional sidebar** — The Members nav link is hidden when `can("membership.read")` returns false (Editor role). Edit/Add Member buttons use similar guards.
+- **Modal pattern** — Simple React state-driven modals with overlay. No modal library dependency.
+- **404 handling** — If the user navigates to an org they don't belong to, the permissions query returns a 404 which `react-query` surfaces as `isError`. The Members page shows "Could not load members."
+
+### Verification results
+| Step | Action | Result |
+|------|--------|--------|
+| 1 | Frontend build | `tsc -b && vite build` — passes cleanly |
+| 2 | Org Admin `GET /me/permissions` | 10 permissions returned |
+| 3 | Org Admin `GET /members` | 2 members |
+| 4 | Org Admin `GET /roles` | 2 roles |
+| 5 | Editor `GET /me/permissions` | 3 permissions (resource.*) |
+| 6 | Editor `GET /members` (no membership.read) | 404 — members tab hidden in UI |
+
+### Files created
+- `frontend/src/api/organizations.ts`
+- `frontend/src/api/memberships.ts`
+- `frontend/src/api/roles.ts`
+- `frontend/src/contexts/OrgPermissionsContext.tsx`
+- `frontend/src/pages/Organizations.tsx`
+- `frontend/src/pages/OrganizationLayout.tsx`
+- `frontend/src/pages/OrgDashboard.tsx`
+- `frontend/src/pages/Members.tsx`
+- `frontend/src/components/Modal.tsx`
+
+### Files modified
+- `frontend/src/App.tsx` — added new routes with nested org layout
+- `frontend/src/api/auth.ts` — added `getMyPermissions`
+- `frontend/src/pages/Dashboard.tsx` — added "View Organizations" button
+
+---
