@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, func, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -11,15 +11,15 @@ class Membership(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
     organization_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("organizations.id", ondelete="CASCADE"), index=True, nullable=False
     )
     role_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("roles.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", server_default=text("'ACTIVE'"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -28,6 +28,7 @@ class Membership(Base):
     )
 
     __table_args__ = (
+        CheckConstraint("status IN ('ACTIVE', 'SUSPENDED', 'INVITED')", name="ck_membership_status"),
         Index(
             "idx_unique_active_membership",
             "user_id",
