@@ -159,7 +159,7 @@ This document breaks the Architecture.md into actionable engineering tasks.
 * **Dependencies:** FE-102, BE-105.
 * **Implements:** Architecture Section 12 (Members).
 
-**[TEST-101] Tenant Isolation Integration Tests**
+**[TEST-101] Tenant Isolation Integration Tests (implemented)**
 * **Description:** Dedicated tests verifying cross-tenant boundaries.
 * **Acceptance Criteria:**
   * Test: Editor (Org A) reads Resource (Org A) -> `200 OK`.
@@ -167,10 +167,10 @@ This document breaks the Architecture.md into actionable engineering tasks.
   * Test: Editor (Org A) downloads Resource (Org B) via `/v1/resources/{id}/download` -> `404 Not Found`.
   * Test: User with `SUSPENDED` membership in Org A accesses Org A -> `404 Not Found`.
   * Test: User with `is_active = false` hits any endpoint -> `401 Unauthorized`.
-* **Dependencies:** BE-108, BE-114 (needs download endpoint).
+* **Dependencies:** BE-108, BE-114 (download endpoint implemented in BE-114). Tests run against Docker Compose services.
 * **Implements:** Architecture Section 15 (Tenant Isolation Tests), Section 18.3, Section 18.9, Section 18.13.
 
-**[TEST-102] Role Hierarchy & Audit Log Tests**
+**[TEST-102] Role Hierarchy & Audit Log Tests (implemented)**
 * **Description:** Dedicated tests for rank enforcement and audit logging.
 * **Acceptance Criteria:**
   * Test: Org Admin (Org A) assigns Org Admin role -> `404 Not Found` (or 400 depending on implementation flag).
@@ -180,7 +180,7 @@ This document breaks the Architecture.md into actionable engineering tasks.
 * **Dependencies:** BE-110, BE-111.
 * **Implements:** Architecture Section 15, Section 18.4, Section 18.5, Section 18.11.
 
-**[TEST-103] Permission Cache & Override Tests**
+**[TEST-103] Permission Cache & Override Tests (implemented)**
 * **Description:** Dedicated tests for Redis caching and sync invalidation.
 * **Acceptance Criteria:**
   * Test: User's permission is cached.
