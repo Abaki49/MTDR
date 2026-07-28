@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCan } from '../contexts/OrgPermissionsContext'
+import { useToast } from '../contexts/ToastContext'
+import { CardSkeleton } from '../components/Skeleton'
 import { getRoles, type Role } from '../api/roles'
 import {
   getRolePermissions,
@@ -22,6 +24,8 @@ const PERMISSION_GROUPS: Record<string, { key: string; label: string }[]> = {
     { key: 'resource.create', label: 'Create resources' },
     { key: 'resource.update', label: 'Update resources' },
     { key: 'resource.delete', label: 'Delete resources' },
+    { key: 'resource.publish', label: 'Publish resources' },
+    { key: 'resource.archive', label: 'Archive resources' },
   ],
   Administration: [
     { key: 'permission.manage', label: 'Manage permissions' },
@@ -33,6 +37,7 @@ export function PermissionsPage() {
   const { orgId } = useParams<{ orgId: string }>()
   const queryClient = useQueryClient()
   const can = useCan()
+  const { toast } = useToast()
 
   const orgIdNum = parseInt(orgId ?? '0', 10)
 
@@ -82,6 +87,7 @@ function PermissionEditor({
   role: Role
   queryClient: ReturnType<typeof useQueryClient>
 }) {
+  const { toast } = useToast()
   const { data: currentPerms = [], isLoading } = useQuery({
     queryKey: ['rolePermissions', orgId, role.id],
     queryFn: () => getRolePermissions(orgId, role.id),
@@ -103,6 +109,11 @@ function PermissionEditor({
       queryClient.invalidateQueries({ queryKey: ['rolePermissions', orgId, role.id] })
       queryClient.invalidateQueries({ queryKey: ['orgPermissions', orgId] })
       setSaved(true)
+      toast('Permissions saved successfully', 'success')
+    },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.detail || 'Failed to save permissions'
+      toast(msg, 'error')
     },
   })
 
@@ -124,7 +135,12 @@ function PermissionEditor({
   }
 
   if (isLoading) {
-    return <div className="state-message"><h3>Loading...</h3><p>Loading permissions for {role.name}</p></div>
+    return (
+      <div>
+        <div className="toolbar"><h1 style={{ fontSize: 20, margin: 0 }}>Permissions</h1></div>
+        <CardSkeleton />
+      </div>
+    )
   }
 
   const hasChanges =

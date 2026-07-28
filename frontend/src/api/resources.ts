@@ -12,13 +12,6 @@ export interface Resource {
   updated_at: string
 }
 
-export interface ResourceCreate {
-  title: string
-  description?: string
-  storage_key: string
-  visibility?: 'PUBLIC' | 'PRIVATE'
-}
-
 export interface ResourceUpdate {
   title?: string
   description?: string | null
@@ -26,18 +19,38 @@ export interface ResourceUpdate {
   visibility?: 'PUBLIC' | 'PRIVATE'
 }
 
-export async function getResources(orgId: number): Promise<Resource[]> {
-  const res = await client.get<Resource[]>(`/organizations/${orgId}/resources`)
+export interface PaginatedResources {
+  items: Resource[]
+  total: number
+}
+
+export async function getResources(orgId: number, limit = 50, offset = 0): Promise<PaginatedResources> {
+  const res = await client.get<PaginatedResources>(`/organizations/${orgId}/resources`, {
+    params: { limit, offset },
+  })
+  return res.data
+}
+
+export async function createResource(
+  orgId: number,
+  file: File,
+  title: string,
+  description?: string,
+  visibility?: 'PUBLIC' | 'PRIVATE',
+): Promise<Resource> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('title', title)
+  if (description) formData.append('description', description)
+  formData.append('visibility', visibility || 'PRIVATE')
+  const res = await client.post<Resource>(`/organizations/${orgId}/resources`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
   return res.data
 }
 
 export async function getResource(orgId: number, resourceId: number): Promise<Resource> {
   const res = await client.get<Resource>(`/organizations/${orgId}/resources/${resourceId}`)
-  return res.data
-}
-
-export async function createResource(orgId: number, data: ResourceCreate): Promise<Resource> {
-  const res = await client.post<Resource>(`/organizations/${orgId}/resources`, data)
   return res.data
 }
 

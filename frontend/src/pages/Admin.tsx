@@ -2,20 +2,26 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
 import { Modal } from '../components/Modal'
-import { getAdminStats, getAdminOrganizations, type AdminOrganization } from '../api/admin'
+import { ConfirmModal } from '../components/ConfirmModal'
+import { TableSkeleton } from '../components/Skeleton'
+import { getAdminStats, getAdminOrganizations, getAdminUsers, type AdminOrganization, type AdminUser } from '../api/admin'
 import { createOrganization, updateOrganization, deleteOrganization, type OrgCreate } from '../api/organizations'
 
 export function AdminPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { toast } = useToast()
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editOrg, setEditOrg] = useState<AdminOrganization | null>(null)
+  const [deleteOrg, setDeleteOrg] = useState<AdminOrganization | null>(null)
 
   const { data: stats } = useQuery({ queryKey: ['adminStats'], queryFn: getAdminStats })
   const { data: orgs = [], isLoading: orgsLoading } = useQuery({ queryKey: ['adminOrgs'], queryFn: getAdminOrganizations })
+  const { data: users = [], isLoading: usersLoading } = useQuery({ queryKey: ['adminUsers'], queryFn: getAdminUsers })
 
   const createMutation = useMutation({
     mutationFn: (data: OrgCreate) => createOrganization(data),
@@ -23,7 +29,12 @@ export function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ['adminOrgs'] })
       queryClient.invalidateQueries({ queryKey: ['adminStats'] })
       setCreateOpen(false)
+      toast('Organization created successfully', 'success')
       navigate(`/organizations/${created.id}/members`)
+    },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.detail || 'Failed to create organization'
+      toast(msg, 'error')
     },
   })
 
@@ -32,6 +43,11 @@ export function AdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminOrgs'] })
       setEditOrg(null)
+      toast('Organization updated successfully', 'success')
+    },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.detail || 'Failed to update organization'
+      toast(msg, 'error')
     },
   })
 
@@ -40,12 +56,20 @@ export function AdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminOrgs'] })
       queryClient.invalidateQueries({ queryKey: ['adminStats'] })
+      setDeleteOrg(null)
+      toast('Organization deleted successfully', 'success')
+    },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.detail || 'Failed to delete organization'
+      toast(msg, 'error')
     },
   })
 
   if (!user?.is_super_admin) {
     return <div className="state-message"><h3>Access Denied</h3><p>Only super admins can access this page.</p></div>
   }
+
+  const [activeTab, setActiveTab] = useState<'orgs' | 'users'>('orgs')
 
   return (
     <div>
@@ -54,37 +78,58 @@ export function AdminPage() {
           <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Admin Panel</h1>
           <p style={{ fontSize: 13, color: 'var(--gray-500)', marginTop: 2 }}>Manage organizations and users</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
-          + New Organization
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/admin/audit-logs')}>
+            Audit Logs
+          </button>
+          <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+            + New Organization
+          </button>
+        </div>
+      </div>
+
+      <div className="tab-nav" style={{ marginBottom: 24 }}>
+        <button
+          className={`tab-nav-link${activeTab === 'orgs' ? ' active' : ''}`}
+          onClick={() => setActiveTab('orgs')}
+        >
+          Organizations
+        </button>
+        <button
+          className={`tab-nav-link${activeTab === 'users' ? ' active' : ''}`}
+          onClick={() => setActiveTab('users')}
+        >
+          Users
         </button>
       </div>
 
       <div className="stats-grid" style={{ marginBottom: 28 }}>
         <div className="stat-card">
           <div className="label">Organizations</div>
-          <div className="value primary">{stats?.organizations ?? '-'}</div>
+          <div className="value primary">{stats?.organizations ?? '\u2014'}</div>
         </div>
         <div className="stat-card">
           <div className="label">Total Members</div>
-          <div className="value success">{stats?.members ?? '-'}</div>
+          <div className="value success">{stats?.members ?? '\u2014'}</div>
         </div>
         <div className="stat-card">
           <div className="label">Active Members</div>
-          <div className="value">{stats?.active_members ?? '-'}</div>
+          <div className="value">{stats?.active_members ?? '\u2014'}</div>
         </div>
         <div className="stat-card">
           <div className="label">Total Users</div>
-          <div className="value warning">{stats?.users ?? '-'}</div>
+          <div className="value warning">{stats?.users ?? '\u2014'}</div>
         </div>
       </div>
 
-      <div className="card">
+      {activeTab === 'orgs' && (
+      <div className="card" style={{ marginBottom: 24 }}>
         <div className="card-header">
           <h2>All Organizations</h2>
           <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>{orgs.length} total</span>
         </div>
         {orgsLoading ? (
-          <div className="card-body"><p style={{ color: 'var(--gray-500)' }}>Loading...</p></div>
+          <TableSkeleton rows={3} cols={6} />
         ) : orgs.length === 0 ? (
           <div className="card-body"><p style={{ color: 'var(--gray-500)' }}>No organizations yet. Create one to get started.</p></div>
         ) : (
@@ -107,7 +152,7 @@ export function AdminPage() {
                     <td><strong>{org.name}</strong></td>
                     <td><code style={{ fontSize: 13 }}>{org.slug}</code></td>
                     <td style={{ color: org.description ? 'inherit' : 'var(--gray-400)' }}>
-                      {org.description || '—'}
+                      {org.description || '\u2014'}
                     </td>
                     <td style={{ fontSize: 13, color: 'var(--gray-500)' }}>
                       {new Date(org.created_at).toLocaleDateString()}
@@ -129,10 +174,7 @@ export function AdminPage() {
                         </button>
                         <button
                           className="btn btn-danger btn-sm"
-                          onClick={() => {
-                            if (confirm(`Delete "${org.name}"?\n\nThis will permanently remove the organization and all its members. This action cannot be undone.`))
-                              deleteMutation.mutate(org.id)
-                          }}
+                          onClick={() => setDeleteOrg(org)}
                         >
                           Delete
                         </button>
@@ -145,13 +187,63 @@ export function AdminPage() {
           </div>
         )}
       </div>
+      )}
+
+      {activeTab === 'users' && (
+      <div className="card">
+        <div className="card-header">
+          <h2>Users</h2>
+          <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>{users.length} total</span>
+        </div>
+        {usersLoading ? (
+          <TableSkeleton rows={3} cols={5} />
+        ) : users.length === 0 ? (
+          <div className="card-body"><p style={{ color: 'var(--gray-500)' }}>No users found.</p></div>
+        ) : (
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Status</th>
+                  <th>Role</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td style={{ fontWeight: 500, color: 'var(--gray-500)' }}>{u.id}</td>
+                    <td><strong>{u.name}</strong></td>
+                    <td>{u.email}</td>
+                    <td>
+                      <span className={`badge badge-${u.is_active ? 'success' : 'danger'}`}>
+                        {u.is_active ? 'Active' : 'Disabled'}
+                      </span>
+                    </td>
+                    <td>
+                      {u.is_super_admin ? (
+                        <span className="badge badge-info">Super Admin</span>
+                      ) : (
+                        <span className="badge badge-neutral">User</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      )}
 
       <CreateOrgModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onSubmit={(data) => createMutation.mutate(data)}
         isSubmitting={createMutation.isPending}
-        error={createMutation.error?.message}
+        error={(createMutation.error as Error)?.message}
       />
 
       {editOrg && (
@@ -160,9 +252,20 @@ export function AdminPage() {
           onClose={() => setEditOrg(null)}
           onSubmit={(data) => updateMutation.mutate({ id: editOrg.id, data })}
           isSubmitting={updateMutation.isPending}
-          error={updateMutation.error?.message}
+          error={(updateMutation.error as Error)?.message}
         />
       )}
+
+      <ConfirmModal
+        open={!!deleteOrg}
+        onClose={() => setDeleteOrg(null)}
+        onConfirm={() => deleteOrg && deleteMutation.mutate(deleteOrg.id)}
+        title="Delete Organization"
+        message={`Delete "${deleteOrg?.name}"?\n\nThis will permanently remove the organization and all its members. This action cannot be undone.`}
+        confirmLabel="Delete"
+        destructive
+        isSubmitting={deleteMutation.isPending}
+      />
     </div>
   )
 }

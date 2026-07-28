@@ -10,11 +10,16 @@ export interface Member {
   updated_at: string
   user_name: string
   user_email: string
+  generated_password?: string | null
 }
 
 export interface MemberCreate {
-  user_id: number
+  user_id?: number
+  name?: string
+  email?: string
+  password?: string
   role_id: number
+  status?: string
 }
 
 export interface MemberUpdate {
@@ -22,8 +27,15 @@ export interface MemberUpdate {
   status?: string
 }
 
-export async function getMembers(orgId: number): Promise<Member[]> {
-  const res = await client.get<Member[]>(`/organizations/${orgId}/members`)
+export interface PaginatedMembers {
+  items: Member[]
+  total: number
+}
+
+export async function getMembers(orgId: number, limit = 50, offset = 0): Promise<PaginatedMembers> {
+  const res = await client.get<PaginatedMembers>(`/organizations/${orgId}/members`, {
+    params: { limit, offset },
+  })
   return res.data
 }
 

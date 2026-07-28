@@ -1,8 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../providers/ThemeProvider'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth()
+  const { toggleTheme, resolved } = useTheme()
   const location = useLocation()
 
   if (!user) return <>{children}</>
@@ -70,6 +72,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </span>
           </div>
           <div className="topbar-right">
+            <Link to="/profile" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>
+              Profile
+            </Link>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={toggleTheme} title="Toggle theme">
+              {resolved === 'dark' ? '\u2600' : '\u263E'}
+            </button>
             <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>
               {user.is_super_admin ? 'Super Admin' : 'User'}
             </span>
@@ -84,10 +92,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 function getPageTitle(path: string): string {
   if (path === '/dashboard') return 'Dashboard'
   if (path === '/admin') return 'Admin Panel'
+  if (path === '/admin/audit-logs') return 'Admin / Audit Logs'
   if (path === '/organizations') return 'Organizations'
+  if (path === '/profile') return 'Profile'
   if (path.startsWith('/organizations/')) {
     const rest = path.split('/organizations/')[1] || ''
     if (rest.includes('/members')) return 'Organization / Members'
+    if (rest.includes('/resources')) return 'Organization / Resources'
+    if (rest.includes('/permissions')) return 'Organization / Permissions'
+    if (rest.includes('/audit-logs')) return 'Organization / Audit Logs'
     if (rest.includes('/')) return 'Organization'
     return 'Organization'
   }

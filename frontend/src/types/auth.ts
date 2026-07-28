@@ -1,10 +1,3 @@
-export interface MembershipInfo {
-  organization_id: number
-  organization_name: string
-  role_name: string
-  status: string
-}
-
 export interface User {
   id: number
   name: string
@@ -16,6 +9,15 @@ export interface User {
   memberships: MembershipInfo[]
 }
 
+export interface MembershipInfo {
+  id: number
+  organization_id: number
+  organization_name: string
+  role_id: number
+  role_name: string
+  status: string
+}
+
 export interface LoginRequest {
   email: string
   password: string
@@ -24,9 +26,7 @@ export interface LoginRequest {
 export interface TokenResponse {
   access_token: string
   refresh_token: string
-  token_type: string
+  user: User
 }
 
-export interface RefreshRequest {
-  refresh_token: string
-}
+export interface LoginResponse extends TokenResponse {}

@@ -1,8 +1,12 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, useRef, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCan } from '../contexts/OrgPermissionsContext'
+import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
 import { Modal, SelectField } from '../components/Modal'
+import { ConfirmModal } from '../components/ConfirmModal'
+import { TableSkeleton } from '../components/Skeleton'
 import {
   getMembers,
   createMember,
@@ -12,28 +16,39 @@ import {
   type MemberCreate,
   type MemberUpdate,
 } from '../api/memberships'
+import { createAdminUser, type CreateAdminUserRequest } from '../api/admin'
 import { getRoles } from '../api/roles'
+import { searchUsers, type UserSearchResult } from '../api/users'
 
 export function MembersPage() {
   const { orgId } = useParams<{ orgId: string }>()
   const queryClient = useQueryClient()
   const can = useCan()
+  const { user } = useAuth()
+  const { toast } = useToast()
 
   const [addOpen, setAddOpen] = useState(false)
   const [editMember, setEditMember] = useState<Member | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Member | null>(null)
 
   const orgIdNum = parseInt(orgId ?? '0', 10)
 
+  const [page, setPage] = useState(0)
+  const pageSize = 50
+
   const {
-    data: members = [],
+    data: membersData = { items: [], total: 0 },
     isLoading,
     isError,
     error,
   } = useQuery({
-    queryKey: ['members', orgIdNum],
-    queryFn: () => getMembers(orgIdNum),
+    queryKey: ['members', orgIdNum, page, pageSize],
+    queryFn: () => getMembers(orgIdNum, pageSize, page * pageSize),
     enabled: !!orgId,
   })
+
+  const members = membersData.items
+  const totalPages = Math.ceil(membersData.total / pageSize) || 1
 
   const { data: roles = [] } = useQuery({
     queryKey: ['roles', orgIdNum],
@@ -46,7 +61,6 @@ export function MembersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members', orgIdNum] })
       queryClient.invalidateQueries({ queryKey: ['orgPermissions', orgIdNum] })
-      setAddOpen(false)
     },
   })
 
@@ -57,6 +71,11 @@ export function MembersPage() {
       queryClient.invalidateQueries({ queryKey: ['members', orgIdNum] })
       queryClient.invalidateQueries({ queryKey: ['orgPermissions', orgIdNum] })
       setEditMember(null)
+      toast('Member updated successfully', 'success')
+    },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.detail || 'Failed to update member'
+      toast(msg, 'error')
     },
   })
 
@@ -65,6 +84,12 @@ export function MembersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members', orgIdNum] })
       queryClient.invalidateQueries({ queryKey: ['orgPermissions', orgIdNum] })
+      setDeleteTarget(null)
+      toast('Member removed successfully', 'success')
+    },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.detail || 'Failed to remove member'
+      toast(msg, 'error')
     },
   })
 
@@ -93,7 +118,12 @@ export function MembersPage() {
   }
 
   if (isLoading) {
-    return <div className="state-message"><h3>Loading...</h3><p>Fetching members</p></div>
+    return (
+      <div>
+        <div className="toolbar"><h1 style={{ fontSize: 20, margin: 0 }}>Members</h1></div>
+        <TableSkeleton rows={4} cols={6} />
+      </div>
+    )
   }
 
   if (isError) {
@@ -153,7 +183,7 @@ export function MembersPage() {
                   <tr key={m.id}>
                     <td style={{ fontWeight: 500 }}>{m.id}</td>
                     <td>{m.user_name || `User #${m.user_id}`}</td>
-                    <td>{m.user_email || '—'}</td>
+                    <td>{m.user_email || '\u2014'}</td>
                     <td>{roles.find((r) => r.id === m.role_id)?.name ?? m.role_id}</td>
                     <td>
                       <span className={`badge badge-${badgeVariant(m.status)}`}>{m.status}</span>
@@ -168,10 +198,7 @@ export function MembersPage() {
                         {can('membership.delete') && (
                           <button
                             className="btn btn-danger btn-sm"
-                            onClick={() => {
-                              if (confirm(`Remove ${m.user_name || `user #${m.user_id}`} from this organization?`))
-                                deleteMutation.mutate(m.id)
-                            }}
+                            onClick={() => setDeleteTarget(m)}
                           >
                             Remove
                           </button>
@@ -191,50 +218,282 @@ export function MembersPage() {
         onClose={() => setAddOpen(false)}
         roleOptions={assignableRoleOptions.length > 0 ? assignableRoleOptions : roleOptions}
         canAssign={assignableRoles.length > 0}
-        onSubmit={(data) => createMutation.mutate(data)}
+        roles={roles}
+        onSubmit={(data) => createMutation.mutateAsync(data)}
         isSubmitting={createMutation.isPending}
-        error={createMutation.error?.message}
+        callerIsSuperAdmin={user?.is_super_admin ?? false}
+        orgIdNum={orgIdNum}
       />
 
       {editMember && (
         <EditMemberModal
           member={editMember}
           onClose={() => setEditMember(null)}
-          roleOptions={roleOptions}
-          assignableRoleOptions={assignableRoleOptions}
+          roleOptions={assignableRoleOptions.length > 0 ? assignableRoleOptions : roleOptions}
           statusOptions={statusOptions}
           onSubmit={(data) => updateMutation.mutate({ id: editMember.id, data })}
           isSubmitting={updateMutation.isPending}
-          error={updateMutation.error?.message}
+          error={(updateMutation.error as Error)?.message}
         />
       )}
+
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 16 }}>
+          <button className="btn btn-ghost btn-sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
+            Previous
+          </button>
+          <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>
+            Page {page + 1} of {totalPages}
+          </span>
+          <button className="btn btn-ghost btn-sm" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
+            Next
+          </button>
+        </div>
+      )}
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+        title="Remove Member"
+        message={`Remove ${deleteTarget?.user_name || `user #${deleteTarget?.user_id}`} from this organization?\n\nThey will lose access to all resources in this organization.`}
+        confirmLabel="Remove"
+        destructive
+        isSubmitting={deleteMutation.isPending}
+      />
     </div>
   )
 }
+
+type MemberModalMode = 'search' | 'create' | 'created'
 
 function AddMemberModal({
   open,
   onClose,
   roleOptions,
   canAssign,
+  roles,
   onSubmit,
   isSubmitting,
   error,
+  callerIsSuperAdmin,
+  orgIdNum,
 }: {
   open: boolean
   onClose: () => void
   roleOptions: { value: number; label: string }[]
   canAssign: boolean
-  onSubmit: (data: MemberCreate) => void
+  roles: { id: number; name: string; rank: number; caller_can_assign: boolean }[]
+  onSubmit: (data: MemberCreate) => Promise<Member>
   isSubmitting: boolean
-  error?: string
+  callerIsSuperAdmin: boolean
+  orgIdNum: number
 }) {
-  const [userId, setUserId] = useState('')
-  const [roleId, setRoleId] = useState('')
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
 
-  const handleSubmit = (e: FormEvent) => {
+  const [mode, setMode] = useState<MemberModalMode>('search')
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<UserSearchResult[]>([])
+  const [selected, setSelected] = useState<UserSearchResult | null>(null)
+  const [roleId, setRoleId] = useState('')
+  const [status, setStatus] = useState('ACTIVE')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  const [createdPassword, setCreatedPassword] = useState<string | null>(null)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [localSubmitting, setLocalSubmitting] = useState(false)
+  const [searching, setSearching] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!open) {
+      setMode('search')
+      setQuery('')
+      setSelected(null)
+      setRoleId('')
+      setStatus('ACTIVE')
+      setName('')
+      setEmail('')
+      setIsSuperAdmin(false)
+      setCreatedPassword(null)
+      setLocalError(null)
+      setLocalSubmitting(false)
+      setResults([])
+      setShowDropdown(false)
+    }
+  }, [open])
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    if (selected) {
+      setQuery(selected.name)
+      setShowDropdown(false)
+    }
+  }, [selected])
+
+  const handleSearch = (value: string) => {
+    setQuery(value)
+    setSelected(null)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!value.trim()) {
+      setResults([])
+      setShowDropdown(false)
+      return
+    }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const data = await searchUsers(value)
+        setResults(data)
+        setShowDropdown(true)
+      } catch {
+        setResults([])
+      } finally {
+        setSearching(false)
+      }
+    }, 250)
+  }
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    onSubmit({ user_id: parseInt(userId, 10), role_id: parseInt(roleId, 10) })
+    setLocalError(null)
+
+    if (mode === 'search') {
+      if (!selected) return
+      setLocalSubmitting(true)
+      try {
+        const result = await onSubmit({
+          user_id: selected.id,
+          role_id: parseInt(roleId, 10),
+          status,
+        })
+        if (result.generated_password) {
+          setCreatedPassword(result.generated_password)
+          setMode('created')
+        } else {
+          toast('Member added successfully', 'success')
+          onClose()
+        }
+      } catch (err: unknown) {
+        const msg = (err as any)?.response?.data?.detail || 'Failed to add member'
+        setLocalError(msg)
+      } finally {
+        setLocalSubmitting(false)
+      }
+      return
+    }
+
+    if (mode === 'create') {
+      setLocalSubmitting(true)
+      try {
+        if (isSuperAdmin && callerIsSuperAdmin) {
+          const adminResult = await createAdminUser({
+            name,
+            email,
+            is_super_admin: true,
+          })
+          if (adminResult.generated_password) {
+            setCreatedPassword(adminResult.generated_password)
+            setMode('created')
+          } else {
+            toast('Super admin created successfully', 'success')
+            onClose()
+          }
+        } else {
+          const result = await onSubmit({
+            name,
+            email,
+            role_id: parseInt(roleId, 10),
+            status,
+          })
+          if (result.generated_password) {
+            setCreatedPassword(result.generated_password)
+            setMode('created')
+          } else {
+            toast('Member added successfully', 'success')
+            onClose()
+          }
+        }
+      } catch (err: unknown) {
+        const msg = (err as any)?.response?.data?.detail || 'Failed to create member'
+        setLocalError(msg)
+      } finally {
+        setLocalSubmitting(false)
+      }
+    }
+  }
+
+  const handleCopyPassword = () => {
+    if (createdPassword && passwordRef.current) {
+      navigator.clipboard?.writeText(createdPassword)
+      toast('Password copied to clipboard', 'success')
+    }
+  }
+
+  const handleDone = () => {
+    if (createdPassword) {
+      queryClient.invalidateQueries({ queryKey: ['members', orgIdNum] })
+      queryClient.invalidateQueries({ queryKey: ['orgPermissions', orgIdNum] })
+    }
+    onClose()
+  }
+
+  if (mode === 'created') {
+    return (
+      <Modal open={open} onClose={handleDone} title="User Created">
+        <div className="modal-body">
+          <p style={{ marginBottom: 16 }}>
+            The user has been created successfully.
+            {createdPassword ? ' A password has been generated.' : ''}
+          </p>
+          {createdPassword && (
+            <div className="form-group">
+              <label className="form-label">Generated Password</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  ref={passwordRef}
+                  className="form-input"
+                  type="text"
+                  value={createdPassword}
+                  readOnly
+                  style={{ fontFamily: 'monospace', flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleCopyPassword}
+                >
+                  Copy
+                </button>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 4 }}>
+                Copy this password now. It will not be shown again.
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-primary" onClick={handleDone}>
+            Done
+          </button>
+        </div>
+      </Modal>
+    )
   }
 
   return (
@@ -242,41 +501,194 @@ function AddMemberModal({
       <form onSubmit={handleSubmit}>
         <div className="modal-body">
           <div className="form-group">
-            <label className="form-label">User ID</label>
-            <input
-              className="form-input"
-              type="number"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              placeholder="Enter user ID"
-              required
-              min={1}
-            />
-            <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 4 }}>
-              Enter the numeric user ID. Only roles with rank above yours are available.
-            </p>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${mode === 'search' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => { setMode('search'); setLocalError(null) }}
+              >
+                Search existing
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${mode === 'create' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => { setMode('create'); setLocalError(null) }}
+              >
+                Create new
+              </button>
+            </div>
           </div>
-          <SelectField
-            label="Role"
-            name="role_id"
-            value={roleId}
-            onChange={setRoleId}
-            options={roleOptions}
-            required
-          />
-          {!canAssign && (
+
+          {mode === 'search' ? (
+            <>
+              <div className="form-group">
+                <label className="form-label">User</label>
+                {selected ? (
+                  <div className="selected-user-badge">
+                    <span><strong>{selected.name}</strong> &lt;{selected.email}&gt;</span>
+                    <button type="button" className="remove-btn" onClick={() => { setSelected(null); setQuery(''); inputRef.current?.focus() }} title="Change user">
+                      &times;
+                    </button>
+                  </div>
+                ) : (
+                  <div className="search-input-wrapper" ref={wrapperRef}>
+                    <input
+                      ref={inputRef}
+                      className="form-input"
+                      type="text"
+                      value={query}
+                      onChange={(e) => handleSearch(e.target.value)}
+                      placeholder="Search by name or email..."
+                      autoFocus
+                    />
+                    {showDropdown && (
+                      <div className="search-results-dropdown">
+                        {searching ? (
+                          <div className="search-no-results">Searching...</div>
+                        ) : results.length === 0 && query.trim() ? (
+                          <div className="search-no-results">No users found</div>
+                        ) : (
+                          results.map((u) => (
+                            <div
+                              key={u.id}
+                              className="search-result-item"
+                              onClick={() => setSelected(u)}
+                            >
+                              <div>
+                                <div className="name">{u.name}</div>
+                                <div className="email">{u.email}</div>
+                              </div>
+                              {u.is_super_admin && (
+                                <span className="badge badge-info" style={{ fontSize: 11 }}>Admin</span>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 4 }}>
+                  Search for a user by name or email address.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              {callerIsSuperAdmin && (
+                <div className="form-group">
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={isSuperAdmin}
+                      onChange={(e) => setIsSuperAdmin(e.target.checked)}
+                      style={{ width: 16, height: 16 }}
+                    />
+                    Super Admin (full access to all organizations)
+                  </label>
+                </div>
+              )}
+              {!isSuperAdmin && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div className="form-group">
+                    <label className="form-label">Name</label>
+                    <input
+                      className="form-input"
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Full name"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Email</label>
+                    <input
+                      className="form-input"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Email address"
+                      required
+                    />
+                  </div>
+                  <SelectField
+                    label="Role"
+                    name="role_id"
+                    value={roleId}
+                    onChange={setRoleId}
+                    options={roleOptions}
+                    required
+                  />
+                  <SelectField
+                    label="Status"
+                    name="status"
+                    value={status}
+                    onChange={setStatus}
+                    options={[
+                      { value: 'ACTIVE', label: 'Active' },
+                      { value: 'SUSPENDED', label: 'Suspended' },
+                      { value: 'INVITED', label: 'Invited' },
+                    ]}
+                  />
+                </div>
+              )}
+              {isSuperAdmin && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>
+                  <div className="form-group">
+                    <label className="form-label">Name</label>
+                    <input
+                      className="form-input"
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Full name"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Email</label>
+                    <input
+                      className="form-input"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Email address"
+                      required
+                    />
+                  </div>
+                  <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>
+                    Super admins have full access to all organizations. No membership will be created.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {mode === 'create' && !isSuperAdmin && !canAssign && (
             <p style={{ fontSize: 12, color: 'var(--warning)', marginTop: 4 }}>
               You cannot assign any role from your current rank.
             </p>
           )}
-          {error && <p className="form-error">{error}</p>}
+          {localError && <p className="form-error">{localError}</p>}
         </div>
         <div className="modal-footer">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-            {isSubmitting ? 'Adding...' : 'Add Member'}
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={
+              localSubmitting ||
+              (mode === 'search' && !selected) ||
+              (mode === 'create' && !isSuperAdmin && (!name || !email || !roleId)) ||
+              (mode === 'create' && isSuperAdmin && (!name || !email))
+            }
+          >
+            {localSubmitting ? 'Adding...' : mode === 'create' && isSuperAdmin ? 'Create Super Admin' : 'Add Member'}
           </button>
         </div>
       </form>
@@ -288,7 +700,6 @@ function EditMemberModal({
   member,
   onClose,
   roleOptions,
-  assignableRoleOptions,
   statusOptions,
   onSubmit,
   isSubmitting,
@@ -297,7 +708,6 @@ function EditMemberModal({
   member: Member
   onClose: () => void
   roleOptions: { value: number; label: string }[]
-  assignableRoleOptions: { value: number; label: string }[]
   statusOptions: { value: string; label: string }[]
   onSubmit: (data: MemberUpdate) => void
   isSubmitting: boolean
@@ -324,7 +734,7 @@ function EditMemberModal({
             name="role_id"
             value={roleId}
             onChange={setRoleId}
-            options={assignableRoleOptions.length > 0 && !roleOptions.find((r) => r.value === parseInt(roleId, 10) && !r.value) ? assignableRoleOptions : roleOptions}
+            options={roleOptions}
           />
           <SelectField
             label="Status"

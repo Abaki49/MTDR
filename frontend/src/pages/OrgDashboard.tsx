@@ -4,6 +4,7 @@ import { useOrgPermissions } from '../contexts/OrgPermissionsContext'
 import { useAuth } from '../contexts/AuthContext'
 import { getMembers } from '../api/memberships'
 import { getResources } from '../api/resources'
+import { StatGridSkeleton } from '../components/Skeleton'
 import type { MembershipInfo } from '../types/auth'
 
 interface OrgDashboardContext {
@@ -19,19 +20,34 @@ export function OrgDashboardPage() {
 
   const orgIdNum = parseInt(orgId ?? '0', 10)
 
-  const { data: members = [] } = useQuery({
+  const { data: membersData } = useQuery({
     queryKey: ['members', orgIdNum],
     queryFn: () => getMembers(orgIdNum),
     enabled: !!orgId && can('membership.read'),
   })
 
-  const { data: resources = [] } = useQuery({
+  const { data: resourcesData } = useQuery({
     queryKey: ['resources', orgIdNum],
     queryFn: () => getResources(orgIdNum),
     enabled: !!orgId && can('resource.read'),
   })
 
+  const members = membersData?.items ?? []
+  const resources = resourcesData?.items ?? []
+
   if (!orgId) return <div className="state-message"><h3>Invalid organization</h3></div>
+
+  if (isLoading) {
+    return (
+      <div>
+        <StatGridSkeleton count={5} />
+        <div className="card">
+          <div className="card-header"><h2>Your Permissions</h2></div>
+          <div className="card-body"><p style={{ color: 'var(--gray-500)' }}>Loading...</p></div>
+        </div>
+      </div>
+    )
+  }
 
   const isSuperAdmin = user?.is_super_admin ?? false
   const roleName = orgInfo?.role_name ?? (isSuperAdmin ? 'Super Admin' : 'N/A')
@@ -52,8 +68,8 @@ export function OrgDashboardPage() {
           </div>
         )}
         <div className="stat-card">
-          <div className="label">{can('membership.read') ? 'Members' : 'Role'}</div>
-          <div className="value success">{can('membership.read') ? members.length : roleName}</div>
+          <div className="label">Members</div>
+          <div className="value success">{can('membership.read') ? members.length : '\u2014'}</div>
         </div>
         <div className="stat-card">
           <div className="label">Permissions</div>
@@ -72,9 +88,7 @@ export function OrgDashboardPage() {
           <h2>Your Permissions</h2>
         </div>
         <div className="card-body">
-          {isLoading ? (
-            <p style={{ color: 'var(--gray-500)' }}>Loading...</p>
-          ) : permissions.length === 0 ? (
+          {permissions.length === 0 ? (
             <p style={{ color: 'var(--gray-500)' }}>No permissions</p>
           ) : (
             <div className="permissions-grid">

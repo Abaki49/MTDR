@@ -54,6 +54,16 @@ function OrgSidebar() {
         </Link>
       )}
 
+      {can('audit.read') && (
+        <Link
+          to={`${base}/audit-logs`}
+          className={`sidebar-link${isActive(`${base}/audit-logs`) ? ' active' : ''}`}
+        >
+          <span className="icon">&#9632;</span>
+          Audit Logs
+        </Link>
+      )}
+
       <div style={{ marginTop: 12 }}>
         <button className="logout-btn" onClick={() => navigate('/organizations')}>
           &larr; Back to Organizations
@@ -87,16 +97,16 @@ function OrgContent() {
   )
 
   return (
-    <div style={{ display: 'flex', minHeight: 'calc(100vh - 64px)', margin: -32 }}>
-      <div style={{ width: 220, background: '#fff', borderRight: '1px solid var(--gray-200)', padding: 24, flexShrink: 0 }}>
+    <div className="org-layout-wrapper">
+      <div className="org-layout-sidebar">
         <OrgSidebar />
       </div>
-      <div style={{ flex: 1, padding: 32, overflow: 'auto' }}>
-        <div style={{ marginBottom: 24 }}>
+      <div className="org-layout-content">
+        <div className="org-layout-header">
           {orgInfo ? (
             <>
-              <h1 style={{ fontSize: 22, fontWeight: 700 }}>{orgInfo.organization_name}</h1>
-              <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>
+              <h1>{orgInfo.organization_name}</h1>
+              <p>
                 {orgInfo.role_name} &middot;{' '}
                 <span className={`badge badge-${orgInfo.status === 'ACTIVE' ? 'success' : 'danger'}`}>
                   {orgInfo.status}
@@ -105,8 +115,8 @@ function OrgContent() {
             </>
           ) : user.is_super_admin ? (
             <>
-              <h1 style={{ fontSize: 22, fontWeight: 700 }}>Organization #{orgId}</h1>
-              <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>
+              <h1>Organization #{orgId}</h1>
+              <p>
                 Super Admin &middot; <span className="badge badge-info">Full Access</span>
               </p>
             </>
